@@ -27,6 +27,10 @@ Write-Host "Parando o Spooler..."
 Stop-Service -Name Spooler -Force
 
 Write-Host "Copiando DLL para System32..."
+if (-not (Test-Path $DllSource)) {
+    Write-Host "ERRO: DLL não encontrada em $DllSource"
+    exit 1
+}
 Copy-Item $DllSource $DllDest -Force
 
 # Registrando o monitor e a porta no registry
@@ -48,7 +52,9 @@ if (-not (Test-Path $outputDir)) {
 # Instalação do driver e impressora virtual
 Write-Host "Iniciando o Spooler..."
 Start-Service -Name Spooler
-Start-Sleep -Seconds 3
+
+Write-Host "Aguardando o Spooler carregar o monitor..."
+Start-Sleep -Seconds 5
 
 # Instalação do driver e impressora virtual
 Write-Host "Instalando driver PostScript..."
@@ -60,7 +66,23 @@ Write-Host "Registrando impressora..."
 if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue) {
     Remove-Printer -Name $PrinterName
 }
-Add-Printer -Name $PrinterName -DriverName $DriverName -PortName $PortName
+$maxAttempts = 5
+$attempt = 0
+$success = $false
+while ($attempt -lt $maxAttempts -and -not $success) {
+    try {
+        Add-Printer -Name $PrinterName -DriverName $DriverName -PortName $PortName
+        $success = $true
+    } catch {
+        $attempt++
+        Write-Host "Tentativa $attempt/$maxAttempts falhou, aguardando..."
+        Start-Sleep -Seconds 3
+    }
+}
+if (-not $success) {
+    Write-Host "ERRO: Não foi possível registrar a impressora. Verifique se a DLL carregou corretamente."
+    exit 1
+}
 
 # Saída console
 Write-Host ""

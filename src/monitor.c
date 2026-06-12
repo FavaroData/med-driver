@@ -1,39 +1,66 @@
 #include "monitor.h"
 #include <stdio.h>
+#include <stdarg.h>
 
 static HKEY        g_hkRoot   = NULL;
 static MONITOR2    g_monitor2 = {0};
 
 // Auxiliares
 
-// Abre a chave do registry 
+// escreve uma linha formatada no log de diagnóstico
+// abre, escreve e fecha o arquivo a cada chamada para garantir que nada se perca em caso de crash
+// temporária — será removida quando o problema de carregamento do monitor for resolvido
+static void LogDebug(const char *fmt, ...) {
+    HANDLE hLog = CreateFileW(L"C:\\Windows\\Temp\\pdfmonitor_init.log",
+        FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hLog == INVALID_HANDLE_VALUE) return;
+    char  buf[512];
+    DWORD w;
+    va_list args;
+    va_start(args, fmt);
+    int len = vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    WriteFile(hLog, buf, (DWORD)(len > 0 ? len : 0), &w, NULL);
+    CloseHandle(hLog);
+}
+
+// Abre a chave do registry
 // e lê as configurações necessárias para o monitor (caminho de saída e caminho do Ghostscript)
-// guarda em memória alocada em ctx 
+// guarda em memória alocada em ctx
 // se ambos os caminhos forem lidos com sucesso retorna TRUE,
 // se nao encontrar retorna FALSE e cancela o job do spooler
 static BOOL ReadConfig(PORT_CONTEXT *ctx) {
-    
+
     // parametros dentro do registry
     HKEY  hKey;
     DWORD size;
 
+    // log: registra qual chave do registry está sendo aberta
+    LogDebug("ReadConfig: abrindo Ports\\Med-driver Port\n");
+
     // lê as configurações do registry, se nao encontrar retorna false
-    if (RegOpenKeyExW(g_hkRoot, L"Ports\\" PORT_NAME, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
-        return FALSE;
+    LONG rc = RegOpenKeyExW(g_hkRoot, L"Ports\\" PORT_NAME, 0, KEY_READ, &hKey);
+    LogDebug("ReadConfig: RegOpenKey resultado=%ld (%s)\n",
+        rc, rc == ERROR_SUCCESS ? "SUCCESS" : "FALHOU");
+    if (rc != ERROR_SUCCESS) return FALSE;
 
     // lê o outputpath e armazena em ctx->outputPath
     // futuramente incluir validação do caminho (verificar se a pasta existe, se tem permissão de escrita, etc)
     size = sizeof(ctx->outputPath);
     RegQueryValueExW(hKey, L"OutputPath", NULL, NULL, (LPBYTE)ctx->outputPath, &size);
+    LogDebug("ReadConfig: OutputPath lido (len=%lu)\n", size);
 
     // lê o ghostscriptpath e armazena em ctx->ghostscriptPath
     // incluir a mesma coisa que o outputpath
     size = sizeof(ctx->ghostscriptPath);
     RegQueryValueExW(hKey, L"GhostscriptPath", NULL, NULL, (LPBYTE)ctx->ghostscriptPath, &size);
+    LogDebug("ReadConfig: GhostscriptPath lido (len=%lu)\n", size);
 
     // fecha a chave do registry, retorna TRUE se ambos os caminhos foram lidos com sucesso, FALSE caso contrário
     RegCloseKey(hKey);
-    return ctx->outputPath[0] != L'\0' && ctx->ghostscriptPath[0] != L'\0';
+    BOOL ok = ctx->outputPath[0] != L'\0' && ctx->ghostscriptPath[0] != L'\0';
+    LogDebug("ReadConfig: resultado final=%s\n", ok ? "OK" : "FALHOU (paths vazios)");
+    return ok;
 }
 
 // Converte o arquivo PostScript gerado pelo spooler em PDF usando o Ghostscript
@@ -56,7 +83,7 @@ static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
         ctx->ghostscriptPath,
         ctx->outputPath,
         ctx->tempPsFile);
-    
+
     // cria o processo do Ghostscript
     // retorna TRUE ou FALSE se o processo foi criado com sucesso ou não
     // em caso de falha, mostra o erro no output debug do Windows (pode ser visualizado com ferramentas como DebugView)
@@ -68,8 +95,8 @@ static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
         OutputDebugStringW(msg);
         return FALSE;
     }
-    
-    // Espera o Ghostscript terminar sem limite de tempo 
+
+    // Espera o Ghostscript terminar sem limite de tempo
     // (Verificação necessária para garantir que o PDF seja gerado antes de prosseguir)
     WaitForSingleObject(pi.hProcess, INFINITE);
     // vefifica se o processo terminou com sucesso (exit code 0)
@@ -96,6 +123,11 @@ static BOOL WINAPI Monitor_EnumPorts(
     LPDWORD pcbNeeded,    // buffer para armazenar quantos bytes precisamos
     LPDWORD pcReturned)   // buffer para armazenar quantas portas retornamos
 {
+    // log: confirma se o Spooler chama EnumPorts após InitializePrintMonitor2
+    // se aparecer, o problema do AddMonitor (3007) está após EnumPorts
+    // se não aparecer, o Spooler rejeitou o MONITOR2 antes de chamar qualquer função
+    LogDebug("EnumPorts: Level=%lu cbBuf=%lu\n", Level, cbBuf);
+
     // constante com a descrição da porta, usada apenas no nível 2
     static const WCHAR PORT_DESC[] = L"Impressora Virtual PDF";
     DWORD needed;
@@ -119,6 +151,7 @@ static BOOL WINAPI Monitor_EnumPorts(
 
     // se o buffer fornecido for muito pequeno, retorna FALSE e quantos bytes seriam necessários
     if (cbBuf < needed) {
+        LogDebug("EnumPorts: buffer insuficiente (needed=%lu cbBuf=%lu)\n", needed, cbBuf);
         SetLastError(ERROR_INSUFFICIENT_BUFFER);
         return FALSE;
     }
@@ -151,11 +184,12 @@ static BOOL WINAPI Monitor_EnumPorts(
     }
 
     // retorna TRUE se estiver tudo certo e que retornamos 1 porta
+    LogDebug("EnumPorts: retornando 1 porta (Level=%lu)\n", Level);
     *pcReturned = 1;
     return TRUE;
 }
 
-// prepara a memória para armazenar as informações do job de impressão 
+// prepara a memória para armazenar as informações do job de impressão
 // (caminho do arquivo PostScript gerado pelo spooler e o caminho do Ghostscript)
 // todas as funções vão receber esse handle resultado dessa função
 // que aponta para a variável do estado do job do spooler
@@ -163,7 +197,7 @@ static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHand
     // inicia a variável para armazenar as informações do job de impressão e as configurações lidas do registry
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(PORT_CONTEXT));
-    
+
     // se não conseguir alocar memória para armazenar as informações do job
     // retorna FALSE e erro de memória insuficiente
     if (!ctx) {
@@ -186,7 +220,7 @@ static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHand
         return FALSE;
     }
 
-    // retorna o handle para as outras funções do monitor 
+    // retorna o handle para as outras funções do monitor
     // que vai apontar para a variável com as informações do job de impressão
     *pHandle = (HANDLE)ctx;
     return TRUE;
@@ -209,7 +243,7 @@ static BOOL WINAPI Monitor_StartDocPort(
     ctx->hTempFile = CreateFileW(
         ctx->tempPsFile, GENERIC_WRITE, 0, NULL,
         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    
+
     // retorna TRUE se o arquivo temporário foi criado com sucesso
     return ctx->hTempFile != INVALID_HANDLE_VALUE;
 }
@@ -220,7 +254,7 @@ static BOOL WINAPI Monitor_WritePort(
     LPBYTE pBuffer,      // ponteiro para os bytes PostScript que chegaram
     DWORD cbBuf,         // quantos bytes chegaram nessa chamada
     LPDWORD pcbWritten)   // devolve quantos bytes foram gravados
-    
+
 {
     // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
@@ -267,7 +301,7 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     // deleta o arquivo temporário
     // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
     DeleteFileW(ctx->tempPsFile);
-    // retorna o resultado da conversão do arquivo 
+    // retorna o resultado da conversão do arquivo
     return ok;
 }
 
@@ -295,7 +329,16 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
 // Função com o único nome que o Spooler reconhece para inicializar o monitor de impressão
 // e utilizar as funções definidas na dll para lidar com os jobs de impressão
 LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT pMonitorInit, PHANDLE phMonitor) {
-    // chave global do registry para dar acesso ao monitor ler as configurações 
+    // log: confirma que a função foi chamada e registra os parâmetros recebidos do Spooler
+    LogDebug("InitializePrintMonitor2: pMonitorInit=%p phMonitor=%p\n",
+        (void*)pMonitorInit, (void*)phMonitor);
+    if (pMonitorInit)
+        LogDebug("  cbSize=%lu hckRegistryRoot=%p\n",
+            pMonitorInit->cbSize, (void*)pMonitorInit->hckRegistryRoot);
+
+    if (!pMonitorInit || !phMonitor) return NULL;
+
+    // chave global do registry para dar acesso ao monitor ler as configurações
     g_hkRoot = pMonitorInit->hckRegistryRoot;
     // handle do monitor devolvido ao Spooler
     *phMonitor = (HANDLE)1;
@@ -310,6 +353,16 @@ LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT pMonitorInit, PHANDLE phM
     g_monitor2.pfnEndDocPort     = Monitor_EndDocPort;
     g_monitor2.pfnClosePort      = Monitor_ClosePort;
 
-    // devolve o endereço da estrutura com as funções do monitor para o Spooler 
+    // log: confirma tamanho e ponteiros do MONITOR2 antes de retornar ao Spooler
+    LogDebug("sizeof(MONITOR2)=%zu cbSize=%lu ret=%p\n"
+             "  EnumPorts=%p OpenPort=%p StartDoc=%p\n"
+             "  Write=%p Read=%p EndDoc=%p Close=%p\n",
+        sizeof(MONITOR2), g_monitor2.cbSize, (void*)&g_monitor2,
+        (void*)g_monitor2.pfnEnumPorts, (void*)g_monitor2.pfnOpenPort,
+        (void*)g_monitor2.pfnStartDocPort, (void*)g_monitor2.pfnWritePort,
+        (void*)g_monitor2.pfnReadPort, (void*)g_monitor2.pfnEndDocPort,
+        (void*)g_monitor2.pfnClosePort);
+
+    // devolve o endereço da estrutura com as funções do monitor para o Spooler
     return &g_monitor2;
 }

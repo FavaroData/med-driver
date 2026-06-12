@@ -1,7 +1,7 @@
-// define as funções e caminhos que o Spooler vai ler
+; define as funções que o Spooler vai ler
 
-// nome da DLL
+; nome da DLL
 LIBRARY pdfmonitor
-// qual função é pública e qual função o Spooler precisa ler 
+; função pública exportada — o Spooler chama GetProcAddress com esse nome
 EXPORTS
     InitializePrintMonitor2
