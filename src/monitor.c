@@ -320,6 +320,65 @@ static BOOL WINAPI Monitor_ClosePort(HANDLE hPort) {
     return TRUE;
 }
 
+// Stubs XCV — interface de configuração bidirecional entre monitor e ferramentas do Windows
+// O Spooler no Windows 10/11 pode exigir que esses ponteiros sejam não-NULL para validar o monitor
+// Os stubs apenas sinalizam que o monitor não suporta configuração via XCV
+static BOOL WINAPI Monitor_XcvOpenPort(
+    HANDLE hMonitor, LPCWSTR pObject, DWORD dwGrantedAccess, PHANDLE phXcv)
+{
+    // porta não suporta sessão de configuração XCV
+    (void)hMonitor; (void)pObject; (void)dwGrantedAccess; (void)phXcv;
+    return FALSE;
+}
+
+static DWORD WINAPI Monitor_XcvDataPort(
+    HANDLE hXcv, LPCWSTR pszDataName,
+    PBYTE pInputData, DWORD cbInputData,
+    PBYTE pOutputData, DWORD cbOutputData, PDWORD pcbOutputNeeded)
+{
+    // nenhum comando XCV é suportado
+    (void)hXcv; (void)pszDataName; (void)pInputData; (void)cbInputData;
+    (void)pOutputData; (void)cbOutputData; (void)pcbOutputNeeded;
+    return ERROR_NOT_SUPPORTED;
+}
+
+static BOOL WINAPI Monitor_XcvClosePort(HANDLE hXcv)
+{
+    // nada a fechar
+    (void)hXcv;
+    return FALSE;
+}
+
+// Stubs de ciclo de vida — campos obrigatórios da MONITOR2 completa (Windows 2000+/XP+/7+)
+// Ausência desses campos fazia cbSize=144 < MONITOR2_SIZE_WIN2K=148, causando erro 3007
+static VOID WINAPI Monitor_Shutdown(HANDLE hMonitor)
+{
+    (void)hMonitor;
+}
+
+static DWORD WINAPI Monitor_SendRecvBidi(
+    HANDLE hPort, DWORD dwAccessBit, LPCWSTR pAction,
+    PBIDI_REQUEST_CONTAINER pReqData, PBIDI_RESPONSE_CONTAINER *ppResData)
+{
+    (void)hPort; (void)dwAccessBit; (void)pAction;
+    (void)pReqData; (void)ppResData;
+    return ERROR_NOT_SUPPORTED;
+}
+
+static DWORD WINAPI Monitor_NotifyUsedPorts(
+    HANDLE hMonitor, DWORD cPorts, PCWSTR *ppszPorts)
+{
+    (void)hMonitor; (void)cPorts; (void)ppszPorts;
+    return ERROR_NOT_SUPPORTED;
+}
+
+static DWORD WINAPI Monitor_NotifyUnusedPorts(
+    HANDLE hMonitor, DWORD cPorts, PCWSTR *ppszPorts)
+{
+    (void)hMonitor; (void)cPorts; (void)ppszPorts;
+    return ERROR_NOT_SUPPORTED;
+}
+
 // Entrada da DLL chamada pelo Windows para carregar antes de chamar as funções
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     (void)hinstDLL; (void)fdwReason; (void)lpvReserved;
@@ -339,29 +398,43 @@ LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT pMonitorInit, PHANDLE phM
     if (!pMonitorInit || !phMonitor) return NULL;
 
     // chave global do registry para dar acesso ao monitor ler as configurações
-    g_hkRoot = pMonitorInit->hckRegistryRoot;
+    g_hkRoot = (HKEY)pMonitorInit->hckRegistryRoot;
     // handle do monitor devolvido ao Spooler
     *phMonitor = (HANDLE)1;
 
     // define como o Spooler vai chamar as funções do monitor, preenchendo a estrutura MONITOR2
-    g_monitor2.cbSize            = sizeof(MONITOR2);
-    g_monitor2.pfnEnumPorts      = Monitor_EnumPorts;
-    g_monitor2.pfnOpenPort       = Monitor_OpenPort;
-    g_monitor2.pfnStartDocPort   = Monitor_StartDocPort;
-    g_monitor2.pfnWritePort      = Monitor_WritePort;
-    g_monitor2.pfnReadPort       = Monitor_ReadPort;
-    g_monitor2.pfnEndDocPort     = Monitor_EndDocPort;
-    g_monitor2.pfnClosePort      = Monitor_ClosePort;
+    g_monitor2.cbSize                       = sizeof(MONITOR2);
+    g_monitor2.pfnEnumPorts                 = Monitor_EnumPorts;
+    g_monitor2.pfnOpenPort                  = Monitor_OpenPort;
+    g_monitor2.pfnStartDocPort              = Monitor_StartDocPort;
+    g_monitor2.pfnWritePort                 = Monitor_WritePort;
+    g_monitor2.pfnReadPort                  = Monitor_ReadPort;
+    g_monitor2.pfnEndDocPort                = Monitor_EndDocPort;
+    g_monitor2.pfnClosePort                 = Monitor_ClosePort;
+    g_monitor2.pfnXcvOpenPort               = Monitor_XcvOpenPort;
+    g_monitor2.pfnXcvDataPort               = Monitor_XcvDataPort;
+    g_monitor2.pfnXcvClosePort              = Monitor_XcvClosePort;
+    g_monitor2.pfnShutdown                  = Monitor_Shutdown;
+    g_monitor2.pfnSendRecvBidiDataFromPort  = Monitor_SendRecvBidi;
+    g_monitor2.pfnNotifyUsedPorts           = Monitor_NotifyUsedPorts;
+    g_monitor2.pfnNotifyUnusedPorts         = Monitor_NotifyUnusedPorts;
 
     // log: confirma tamanho e ponteiros do MONITOR2 antes de retornar ao Spooler
-    LogDebug("sizeof(MONITOR2)=%zu cbSize=%lu ret=%p\n"
+    // %lu com cast porque msvcrt.dll não suporta %zu (C99)
+    LogDebug("sizeof(MONITOR2)=%lu cbSize=%lu ret=%p\n"
              "  EnumPorts=%p OpenPort=%p StartDoc=%p\n"
-             "  Write=%p Read=%p EndDoc=%p Close=%p\n",
-        sizeof(MONITOR2), g_monitor2.cbSize, (void*)&g_monitor2,
+             "  Write=%p Read=%p EndDoc=%p Close=%p\n"
+             "  XcvOpen=%p XcvData=%p XcvClose=%p\n"
+             "  Shutdown=%p Bidi=%p NotifyUsed=%p NotifyUnused=%p\n",
+        (unsigned long)sizeof(MONITOR2), g_monitor2.cbSize, (void*)&g_monitor2,
         (void*)g_monitor2.pfnEnumPorts, (void*)g_monitor2.pfnOpenPort,
         (void*)g_monitor2.pfnStartDocPort, (void*)g_monitor2.pfnWritePort,
         (void*)g_monitor2.pfnReadPort, (void*)g_monitor2.pfnEndDocPort,
-        (void*)g_monitor2.pfnClosePort);
+        (void*)g_monitor2.pfnClosePort,
+        (void*)g_monitor2.pfnXcvOpenPort, (void*)g_monitor2.pfnXcvDataPort,
+        (void*)g_monitor2.pfnXcvClosePort,
+        (void*)g_monitor2.pfnShutdown, (void*)g_monitor2.pfnSendRecvBidiDataFromPort,
+        (void*)g_monitor2.pfnNotifyUsedPorts, (void*)g_monitor2.pfnNotifyUnusedPorts);
 
     // devolve o endereço da estrutura com as funções do monitor para o Spooler
     return &g_monitor2;

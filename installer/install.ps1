@@ -25,6 +25,8 @@ $PortReg     = "$MonitorReg\Ports\$PortName"
 # Verificações
 Write-Host "Parando o Spooler..."
 Stop-Service -Name Spooler -Force
+$p = Get-Process -Name spoolsv -ErrorAction SilentlyContinue
+if ($p) { $p.WaitForExit() }
 
 Write-Host "Copiando DLL para System32..."
 if (-not (Test-Path $DllSource)) {

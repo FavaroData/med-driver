@@ -1,8 +1,10 @@
 # Cross-compilação Linux → Windows x64
 # Requer: sudo apt install mingw-w64
 
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+
 CC      = x86_64-w64-mingw32-gcc
-TARGET  = pdfmonitor.dll
+TARGET  = $(MAKEFILE_DIR)pdfmonitor.dll
 SRCS    = src/monitor.c
 OBJS    = $(SRCS:.c=.o)
 DEF     = src/monitor.def
