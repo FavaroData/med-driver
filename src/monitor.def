@@ -1,0 +1,7 @@
+// define as funções e caminhos que o Spooler vai ler
+
+// nome da DLL
+LIBRARY pdfmonitor
+// qual função é pública e qual função o Spooler precisa ler 
+EXPORTS
+    InitializePrintMonitor2

@@ -1,0 +1,315 @@
+#include "monitor.h"
+#include <stdio.h>
+
+static HKEY        g_hkRoot   = NULL;
+static MONITOR2    g_monitor2 = {0};
+
+// Auxiliares
+
+// Abre a chave do registry 
+// e lê as configurações necessárias para o monitor (caminho de saída e caminho do Ghostscript)
+// guarda em memória alocada em ctx 
+// se ambos os caminhos forem lidos com sucesso retorna TRUE,
+// se nao encontrar retorna FALSE e cancela o job do spooler
+static BOOL ReadConfig(PORT_CONTEXT *ctx) {
+    
+    // parametros dentro do registry
+    HKEY  hKey;
+    DWORD size;
+
+    // lê as configurações do registry, se nao encontrar retorna false
+    if (RegOpenKeyExW(g_hkRoot, L"Ports\\" PORT_NAME, 0, KEY_READ, &hKey) != ERROR_SUCCESS)
+        return FALSE;
+
+    // lê o outputpath e armazena em ctx->outputPath
+    // futuramente incluir validação do caminho (verificar se a pasta existe, se tem permissão de escrita, etc)
+    size = sizeof(ctx->outputPath);
+    RegQueryValueExW(hKey, L"OutputPath", NULL, NULL, (LPBYTE)ctx->outputPath, &size);
+
+    // lê o ghostscriptpath e armazena em ctx->ghostscriptPath
+    // incluir a mesma coisa que o outputpath
+    size = sizeof(ctx->ghostscriptPath);
+    RegQueryValueExW(hKey, L"GhostscriptPath", NULL, NULL, (LPBYTE)ctx->ghostscriptPath, &size);
+
+    // fecha a chave do registry, retorna TRUE se ambos os caminhos foram lidos com sucesso, FALSE caso contrário
+    RegCloseKey(hKey);
+    return ctx->outputPath[0] != L'\0' && ctx->ghostscriptPath[0] != L'\0';
+}
+
+// Converte o arquivo PostScript gerado pelo spooler em PDF usando o Ghostscript
+// executa o Ghostscript em um processo separado
+// retorna TRUE se o processo do Ghostscript terminou com sucesso
+// se não FALSE e mostra o erro no output debug
+// fecha o processo do Ghostscript
+static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
+    // parametros para criar o processo do Ghostscript
+    WCHAR            cmdLine[2048];
+    STARTUPINFOW     si = {0};
+    PROCESS_INFORMATION pi = {0};
+    DWORD            exitCode = 1;
+
+    si.cb = sizeof(si);
+
+    // executa o Ghostscript com os parâmetros armazenados em ctx no terminal
+    _snwprintf(cmdLine, 2048,
+        L"\"%s\" -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%s\" \"%s\"",
+        ctx->ghostscriptPath,
+        ctx->outputPath,
+        ctx->tempPsFile);
+    
+    // cria o processo do Ghostscript
+    // retorna TRUE ou FALSE se o processo foi criado com sucesso ou não
+    // em caso de falha, mostra o erro no output debug do Windows (pode ser visualizado com ferramentas como DebugView)
+    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW,
+                        NULL, NULL, &si, &pi)) {
+        DWORD err = GetLastError();
+        WCHAR msg[256];
+        _snwprintf(msg, 256, L"[pdfmonitor] CreateProcess falhou. Erro: %lu\nCmd: %s\n", err, cmdLine);
+        OutputDebugStringW(msg);
+        return FALSE;
+    }
+    
+    // Espera o Ghostscript terminar sem limite de tempo 
+    // (Verificação necessária para garantir que o PDF seja gerado antes de prosseguir)
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    // vefifica se o processo terminou com sucesso (exit code 0)
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    // fecha os handles do processo e thread do Ghostscript
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return exitCode == 0;
+}
+
+// Funções do monitor que serão chamadas pelo spooler
+
+// Enumera as portas suportadas pelo monitor (apenas uma porta virtual)
+// se for 1 retorna apenas o nome da porta
+// se for 2 retorna nome da porta + nome do monitor + descrição
+// Dois níveis para que seja compatível com diferentes versões do Windows
+// Alguns pedem apenas o nome, outros pedem nome + descrição + monitor para mostrar na lista de impressoras
+static BOOL WINAPI Monitor_EnumPorts(
+    HANDLE hMonitor,      // handle do monitor
+    LPWSTR pName,         // nome do servidor (NULL = local)
+    DWORD Level,          // nível de "detalhe" pedido (1 ou 2)
+    LPBYTE pPorts,        // buffer onde escrevemos a lista de portas
+    DWORD cbBuf,          // tamanho do buffer em bytes
+    LPDWORD pcbNeeded,    // buffer para armazenar quantos bytes precisamos
+    LPDWORD pcReturned)   // buffer para armazenar quantas portas retornamos
+{
+    // constante com a descrição da porta, usada apenas no nível 2
+    static const WCHAR PORT_DESC[] = L"Impressora Virtual PDF";
+    DWORD needed;
+
+    // se o nível pedido for diferente de 1 ou 2, retorna erro
+    if (Level != 1 && Level != 2) {
+        SetLastError(ERROR_INVALID_LEVEL);
+        return FALSE;
+    }
+
+    // calculo de quantos bytes necessários para retornar a lista de portas se for nivel 1 ou nivel 2
+    if (Level == 1)
+        needed = sizeof(PORT_INFO_1W) + (DWORD)((wcslen(PORT_NAME) + 1) * sizeof(WCHAR));
+    else
+        needed = sizeof(PORT_INFO_2W)
+               + (DWORD)((wcslen(PORT_NAME)    + 1) * sizeof(WCHAR))
+               + (DWORD)((wcslen(MONITOR_NAME) + 1) * sizeof(WCHAR))
+               + (DWORD)((wcslen(PORT_DESC)    + 1) * sizeof(WCHAR));
+    *pcbNeeded  = needed;
+    *pcReturned = 0;
+
+    // se o buffer fornecido for muito pequeno, retorna FALSE e quantos bytes seriam necessários
+    if (cbBuf < needed) {
+        SetLastError(ERROR_INSUFFICIENT_BUFFER);
+        return FALSE;
+    }
+
+    // preenche o buffer com as informações da porta, dependendo do nível
+    // apenas nome
+    if (Level == 1) {
+        PORT_INFO_1W *pInfo = (PORT_INFO_1W *)pPorts;
+        LPWSTR        strBuf = (LPWSTR)(pPorts + sizeof(PORT_INFO_1W));
+        wcscpy(strBuf, PORT_NAME);
+        pInfo->pName = strBuf;
+    // nome + descrição + monitor
+    } else {
+        PORT_INFO_2W *pInfo  = (PORT_INFO_2W *)pPorts;
+        LPWSTR        strBuf = (LPWSTR)(pPorts + sizeof(PORT_INFO_2W));
+
+        wcscpy(strBuf, PORT_NAME);
+        pInfo->pPortName = strBuf;
+        strBuf += wcslen(PORT_NAME) + 1;
+
+        wcscpy(strBuf, MONITOR_NAME);
+        pInfo->pMonitorName = strBuf;
+        strBuf += wcslen(MONITOR_NAME) + 1;
+
+        wcscpy(strBuf, PORT_DESC);
+        pInfo->pDescription = strBuf;
+
+        pInfo->fPortType = PORT_TYPE_WRITE;
+        pInfo->Reserved  = 0;
+    }
+
+    // retorna TRUE se estiver tudo certo e que retornamos 1 porta
+    *pcReturned = 1;
+    return TRUE;
+}
+
+// prepara a memória para armazenar as informações do job de impressão 
+// (caminho do arquivo PostScript gerado pelo spooler e o caminho do Ghostscript)
+// todas as funções vão receber esse handle resultado dessa função
+// que aponta para a variável do estado do job do spooler
+static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHandle) {
+    // inicia a variável para armazenar as informações do job de impressão e as configurações lidas do registry
+    PORT_CONTEXT *ctx = (PORT_CONTEXT *)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(PORT_CONTEXT));
+    
+    // se não conseguir alocar memória para armazenar as informações do job
+    // retorna FALSE e erro de memória insuficiente
+    if (!ctx) {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+
+    // inicializa o handle do arquivo temporário como inválido,
+    // serve para o close port não tentar fechar um handle caso falhe antes de criar o arquivo temporário
+    ctx->hTempFile = INVALID_HANDLE_VALUE;
+
+    // lê as configurações do registry
+    // tenta preencher o ctx com o caminho de saída e caminho do Ghostscript
+    // se não conseguir ler as configurações necessárias
+    // libera a memória alocada
+    // retorna FALSE e erro de falha ao abrir
+    if (!ReadConfig(ctx)) {
+        HeapFree(GetProcessHeap(), 0, ctx);
+        SetLastError(ERROR_OPEN_FAILED);
+        return FALSE;
+    }
+
+    // retorna o handle para as outras funções do monitor 
+    // que vai apontar para a variável com as informações do job de impressão
+    *pHandle = (HANDLE)ctx;
+    return TRUE;
+}
+
+// recebe a memória alocada no open port com as informações do job de impressão
+// cria um arquivo temporário para armazenar o conteúdo PostScript enviado pelo spooler
+static BOOL WINAPI Monitor_StartDocPort(
+    HANDLE hPort, LPWSTR pPrinterName, DWORD JobId, DWORD Level, LPBYTE pDocInfo)
+{
+    // cast do handle para acessar as informações do job de impressão
+    PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
+    WCHAR         tempDir[MAX_PATH];
+
+    // cria o arquivo temporário para armazenar o conteúdo PostScript gerado pelo spooler
+    GetTempPathW(MAX_PATH, tempDir);
+    GetTempFileNameW(tempDir, L"pdfmon", 0, ctx->tempPsFile);
+
+    // referencia para o monitor do spooler, que vai escrever o conteúdo PostScript nesse arquivo temporário
+    ctx->hTempFile = CreateFileW(
+        ctx->tempPsFile, GENERIC_WRITE, 0, NULL,
+        CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    
+    // retorna TRUE se o arquivo temporário foi criado com sucesso
+    return ctx->hTempFile != INVALID_HANDLE_VALUE;
+}
+
+// função para escrever os dados dentro do arquivo temporário criado no StartDocPort
+static BOOL WINAPI Monitor_WritePort(
+    HANDLE hPort,        // handle que aponta para o PORT_CONTEXT do job
+    LPBYTE pBuffer,      // ponteiro para os bytes PostScript que chegaram
+    DWORD cbBuf,         // quantos bytes chegaram nessa chamada
+    LPDWORD pcbWritten)   // devolve quantos bytes foram gravados
+    
+{
+    // cast do handle para acessar as informações do job de impressão
+    PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
+    // escreve os bytes PostScript recebidos do spooler
+    // caso haja falha na escrita, retorna FALSE e mostra o erro no output debug do Windows
+    if (!WriteFile(ctx->hTempFile, pBuffer, cbBuf, pcbWritten, NULL)) {
+        DWORD err = GetLastError();
+        WCHAR msg[128];
+        _snwprintf(msg, 128, L"[pdfmonitor] WriteFile falhou. Erro: %lu\n", err);
+        OutputDebugStringW(msg);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+// função de leitura do monitor
+// a princípio não é necessária para o funcionamento,
+// no entanto é necessária pois o contrato com o Spooler exije essa função
+// a fim de garantir a compatibilidade com diferentes versões do Windows (algumas chamam o ReadPort)
+// e para o Spooler não interpretar lixo de memória como resposta, retorna sempre 0 bytes lidos e TRUE
+static BOOL WINAPI Monitor_ReadPort(
+    HANDLE hPort, LPBYTE pBuffer, DWORD cbBuf, LPDWORD pcbRead)
+{
+    *pcbRead = 0;
+    return TRUE;
+}
+
+// função chamada pelo spooler quando o job de impressão é finalizado
+// fecha o arquivo temporário onde o conteúdo PostScript foi armazenado
+// chama a função de conversão do arquivo ConvertPsToPdf na qual usa o Ghostscript
+// deleta o arquivo temporário
+static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
+    // cast do handle para acessar as informações do job de impressão
+    PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
+    BOOL          ok;
+
+    // fechha o arquivo temporário onde o conteúdo PostScript foi armazenado
+    // a fim de liberar o handle para o processo do Ghostscript ler o arquivo e convertê-lo para PDF
+    CloseHandle(ctx->hTempFile);
+    ctx->hTempFile = INVALID_HANDLE_VALUE;
+
+    // chama a função de conversão de PS para PDF
+    ok = ConvertPsToPdf(ctx);
+    // deleta o arquivo temporário
+    // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
+    DeleteFileW(ctx->tempPsFile);
+    // retorna o resultado da conversão do arquivo 
+    return ok;
+}
+
+// função chamada pelo spooler para fechar a porta de impressão
+// libera a memória alocada
+// caso o arquivo temporário ainda esteja aberto, fecha o handle para evitar vazamento de handle
+static BOOL WINAPI Monitor_ClosePort(HANDLE hPort) {
+    PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
+
+    // se o arquivo temporário ainda estiver aberto, fecha o handle para evitar vazamento de handle
+    if (ctx->hTempFile != INVALID_HANDLE_VALUE)
+        CloseHandle(ctx->hTempFile);
+
+    // libera a memória
+    HeapFree(GetProcessHeap(), 0, ctx);
+    return TRUE;
+}
+
+// Entrada da DLL chamada pelo Windows para carregar antes de chamar as funções
+BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+    (void)hinstDLL; (void)fdwReason; (void)lpvReserved;
+    return TRUE;
+}
+
+// Função com o único nome que o Spooler reconhece para inicializar o monitor de impressão
+// e utilizar as funções definidas na dll para lidar com os jobs de impressão
+LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT pMonitorInit, PHANDLE phMonitor) {
+    // chave global do registry para dar acesso ao monitor ler as configurações 
+    g_hkRoot = pMonitorInit->hckRegistryRoot;
+    // handle do monitor devolvido ao Spooler
+    *phMonitor = (HANDLE)1;
+
+    // define como o Spooler vai chamar as funções do monitor, preenchendo a estrutura MONITOR2
+    g_monitor2.cbSize            = sizeof(MONITOR2);
+    g_monitor2.pfnEnumPorts      = Monitor_EnumPorts;
+    g_monitor2.pfnOpenPort       = Monitor_OpenPort;
+    g_monitor2.pfnStartDocPort   = Monitor_StartDocPort;
+    g_monitor2.pfnWritePort      = Monitor_WritePort;
+    g_monitor2.pfnReadPort       = Monitor_ReadPort;
+    g_monitor2.pfnEndDocPort     = Monitor_EndDocPort;
+    g_monitor2.pfnClosePort      = Monitor_ClosePort;
+
+    // devolve o endereço da estrutura com as funções do monitor para o Spooler 
+    return &g_monitor2;
+}
