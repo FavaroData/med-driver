@@ -1,8 +1,10 @@
 #Requires -RunAsAdministrator
 
 $DllPath     = "$env:SystemRoot\System32\pdfmonitor.dll"
-$MonitorName = "Med-driver Monitor"
-$PortName    = "Med-driver Port"
+$MonitorName = "MedMonitor"
+$PortName    = "MedPort"
+$PrinterName = "MedPrinter"
+$DriverName = "Generic / Text Only"
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 $PortReg     = "$MonitorReg\Ports\$PortName"
 
@@ -88,6 +90,73 @@ Write-Host ""
 Write-Host "[7] Status do Spooler"
 $spooler = Get-Service -Name Spooler
 Write-Host "  Status: $($spooler.Status)"
+
+# 7b. Teste AddPrinter com portas nativas (isola se o problema é a MedPort ou o ambiente)
+Write-Host ""
+Write-Host "[7b] Teste AddPrinter com portas nativas"
+Add-Type -TypeDefinition "
+using System;
+using System.Runtime.InteropServices;
+public class DbgPrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PRINTER_INFO_2 {
+        public string pServerName;
+        public string pPrinterName;
+        public string pShareName;
+        public string pPortName;
+        public string pDriverName;
+        public string pComment;
+        public string pLocation;
+        public IntPtr pDevMode;
+        public string pSepFile;
+        public string pPrintProcessor;
+        public string pDatatype;
+        public string pParameters;
+        public IntPtr pSecurityDescriptor;
+        public uint Attributes;
+        public uint Priority;
+        public uint DefaultPriority;
+        public uint StartTime;
+        public uint UntilTime;
+        public uint Status;
+        public uint cJobs;
+        public uint AveragePPM;
+    }
+    [DllImport(""winspool.drv"", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern IntPtr AddPrinter(string pName, uint Level, ref PRINTER_INFO_2 pPrinter);
+    [DllImport(""winspool.drv"", SetLastError=true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+}
+" -ErrorAction SilentlyContinue
+
+function Test-AddPrinter($testName, $portName, $driverName) {
+    $pi = New-Object DbgPrinter+PRINTER_INFO_2
+    $pi.pPrinterName    = $testName
+    $pi.pPortName       = $portName
+    $pi.pDriverName     = $driverName
+    $pi.pPrintProcessor = "winprint"
+    $pi.pDatatype       = "RAW"
+    $pi.Attributes      = 0x40
+    Remove-Printer -Name $testName -ErrorAction SilentlyContinue
+    $h = [DbgPrinter]::AddPrinter($null, 2, [ref]$pi)
+    $e = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    if ($h -ne [IntPtr]::Zero) {
+        Write-Host "  OK   [$portName] handle=$h"
+        [DbgPrinter]::ClosePrinter($h) | Out-Null
+        Remove-Printer -Name $testName -ErrorAction SilentlyContinue
+    } else {
+        Write-Host "  FAIL [$portName] erro Win32=$e"
+    }
+}
+
+# Teste 1: porta nativa FILE: — sempre existe, sem monitor customizado
+Test-AddPrinter "DiagPrinter_FILE"   "FILE:"   "Microsoft Print To PDF"
+# Teste 2: porta nativa LPT1: — porta física padrão
+Test-AddPrinter "DiagPrinter_LPT1"  "LPT1:"   "Microsoft Print To PDF"
+# Teste 3: nossa porta customizada com driver PDF nativo
+Test-AddPrinter "DiagPrinter_MedPDF" $PortName "Microsoft Print To PDF"
+# Teste 4: nossa porta customizada com driver PS (o que o install.ps1 usa)
+Test-AddPrinter "DiagPrinter_MedPS"  $PortName "Microsoft PS Class Driver"
 
 # 8. Carregamento manual da DLL
 Write-Host ""

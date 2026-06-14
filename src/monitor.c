@@ -289,6 +289,16 @@ static BOOL WINAPI Monitor_WritePort(
     LogDebug("WritePort: hPort=%p cbBuf=%lu\n", (void*)hPort, cbBuf);
     // escreve os bytes PostScript recebidos do spooler
     // caso haja falha na escrita, retorna FALSE e mostra o erro no output debug do Windows
+    // No WritePort, antes do WriteFile, adiciona temporariamente:
+    LogDebug("WritePort: primeiros bytes = %02X %02X %02X %02X %02X %02X %02X %02X\n",
+        cbBuf > 0 ? pBuffer[0] : 0,
+        cbBuf > 1 ? pBuffer[1] : 0,
+        cbBuf > 2 ? pBuffer[2] : 0,
+        cbBuf > 3 ? pBuffer[3] : 0,
+        cbBuf > 4 ? pBuffer[4] : 0,
+        cbBuf > 5 ? pBuffer[5] : 0,
+        cbBuf > 6 ? pBuffer[6] : 0,
+        cbBuf > 7 ? pBuffer[7] : 0);
     if (!WriteFile(ctx->hTempFile, pBuffer, cbBuf, pcbWritten, NULL)) {
         DWORD err = GetLastError();
         WCHAR msg[128];
@@ -373,9 +383,36 @@ static DWORD WINAPI Monitor_XcvDataPort(
     PBYTE pInputData, DWORD cbInputData,
     PBYTE pOutputData, DWORD cbOutputData, PDWORD pcbOutputNeeded)
 {
-    // nenhum comando XCV é suportado
-    (void)hXcv; (void)pszDataName; (void)pInputData; (void)cbInputData;
-    (void)pOutputData; (void)cbOutputData; (void)pcbOutputNeeded;
+    // loga o nome do comando XCV para identificar o que o Edge/Chrome estão pedindo
+    // o Edge chama XcvDataPort para consultar capacidades antes de renderizar a prévia
+    LogDebug("XcvDataPort: pszDataName=%ls cbInput=%lu cbOutput=%lu\n",
+        pszDataName ? pszDataName : L"<NULL>",
+        cbInputData, cbOutputData);
+
+    (void)hXcv; (void)pInputData;
+    (void)pOutputData; (void)pcbOutputNeeded;
+
+    // MonitorUI — o spooler/Edge pede a DLL de UI do monitor
+    // retornar ERROR_NOT_SUPPORTED faz o Edge ficar esperando indefinidamente
+    // retornar ERROR_INSUFFICIENT_BUFFER com pcbOutputNeeded=0 encerra a query corretamente
+    if (pszDataName && wcscmp(pszDataName, L"MonitorUI") == 0) {
+        LogDebug("XcvDataPort: MonitorUI query — retornando sem UI\n");
+        if (pcbOutputNeeded) *pcbOutputNeeded = 0;
+        return ERROR_SUCCESS;
+    }
+
+    // PortIsLocal — alguns componentes perguntam se a porta é local
+    if (pszDataName && wcscmp(pszDataName, L"PortIsLocal") == 0) {
+        LogDebug("XcvDataPort: PortIsLocal query\n");
+        if (pOutputData && cbOutputData >= sizeof(DWORD))
+            *(DWORD*)pOutputData = 1;
+        if (pcbOutputNeeded) *pcbOutputNeeded = sizeof(DWORD);
+        return ERROR_SUCCESS;
+    }
+
+    // qualquer outro comando XCV não suportado — loga e retorna
+    LogDebug("XcvDataPort: comando nao suportado — retornando ERROR_NOT_SUPPORTED\n");
+    if (pcbOutputNeeded) *pcbOutputNeeded = 0;
     return ERROR_NOT_SUPPORTED;
 }
 

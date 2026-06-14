@@ -1,0 +1,35 @@
+ANTES DE RODAR OS SCRIPTS
+=========================
+
+Se aparecer o erro:
+  "nao pode ser carregado porque a execucao de scripts foi desabilitada neste sistema"
+
+Execute o script assim (sem alterar configuracoes do sistema):
+
+  powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+Ou, para liberar permanentemente para o seu usuario:
+
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+Depois rode normalmente:
+
+  .\install.ps1
+
+
+PARA VERIFICAR SE O DRIVER MED PDF DRIVER FOI INSTALADO CORRETAMENTE NA IMPRESSORA VIRTUAL
+==========================================================================================
+Rode no PowerShell: 
+Get-Printer -Name "MedPrinter" | Select-Object Name, DriverName
+
+Saída esperada:
+Name       DriverName
+----       ----------
+MedPrinter Med PDF Printer
+
+
+ORDEM DE USO
+============
+
+1. install.ps1   — instala o monitor, a porta e a impressora virtual
+2. diagnostico.ps1 — verifica se tudo foi instalado corretamente
