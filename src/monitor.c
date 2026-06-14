@@ -163,6 +163,11 @@ static BOOL WINAPI Monitor_EnumPorts(
         LPWSTR        strBuf = (LPWSTR)(pPorts + sizeof(PORT_INFO_1W));
         wcscpy(strBuf, PORT_NAME);
         pInfo->pName = strBuf;
+        LogDebug("EnumPorts L1 campos: pPorts=%p cbBuf=%lu sizeof(PORT_INFO_1W)=%lu\n"
+                 "  pName: offset=%lu addr=%p val='%ls'\n",
+            (void*)pPorts, cbBuf, (unsigned long)sizeof(PORT_INFO_1W),
+            (unsigned long)((LPBYTE)pInfo->pName - pPorts),
+            (void*)pInfo->pName, pInfo->pName);
     // nome + descrição + monitor
     } else {
         PORT_INFO_2W *pInfo  = (PORT_INFO_2W *)pPorts;
@@ -181,6 +186,16 @@ static BOOL WINAPI Monitor_EnumPorts(
 
         pInfo->fPortType = PORT_TYPE_WRITE;
         pInfo->Reserved  = 0;
+        LogDebug("EnumPorts L2 campos: pPorts=%p cbBuf=%lu sizeof(PORT_INFO_2W)=%lu\n"
+                 "  pPortName:    offset=%lu addr=%p val='%ls'\n"
+                 "  pMonitorName: offset=%lu addr=%p val='%ls'\n"
+                 "  pDescription: offset=%lu addr=%p val='%ls'\n"
+                 "  fPortType=%lu Reserved=%lu\n",
+            (void*)pPorts, cbBuf, (unsigned long)sizeof(PORT_INFO_2W),
+            (unsigned long)((LPBYTE)pInfo->pPortName    - pPorts), (void*)pInfo->pPortName,    pInfo->pPortName,
+            (unsigned long)((LPBYTE)pInfo->pMonitorName - pPorts), (void*)pInfo->pMonitorName, pInfo->pMonitorName,
+            (unsigned long)((LPBYTE)pInfo->pDescription - pPorts), (void*)pInfo->pDescription, pInfo->pDescription,
+            (unsigned long)pInfo->fPortType, (unsigned long)pInfo->Reserved);
     }
 
     // retorna TRUE se estiver tudo certo e que retornamos 1 porta
@@ -194,6 +209,9 @@ static BOOL WINAPI Monitor_EnumPorts(
 // todas as funções vão receber esse handle resultado dessa função
 // que aponta para a variável do estado do job do spooler
 static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHandle) {
+    // log: confirma que o Spooler chama OpenPort após EnumPorts
+    LogDebug("OpenPort: hMonitor=%p pName=%ls pHandle=%p\n",
+        (void*)hMonitor, pName ? pName : L"<NULL>", (void*)pHandle);
     // inicia a variável para armazenar as informações do job de impressão e as configurações lidas do registry
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(PORT_CONTEXT));
