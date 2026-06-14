@@ -13,9 +13,9 @@ $DllSource = Join-Path $ScriptDir "..\pdfmonitor.dll"
 $DllDest   = "$env:SystemRoot\System32\pdfmonitor.dll"
 
 # Configurações do driver, monitor e porta
-$MonitorName = "Med-driver Monitor"
-$PortName    = "Med-driver Port"
-$PrinterName = "Med-driver Printer"
+$MonitorName = "MedMonitor"
+$PortName    = "MedPort"
+$PrinterName = "Med Printer"
 $DriverName  = "Microsoft PS Class Driver"
 
 # Regs 
