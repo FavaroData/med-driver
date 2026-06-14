@@ -56,6 +56,26 @@
 *PaperDimension Legal:  "612 1008"
 *PaperDimension A3:     "842 1191"
 
+*% Features minimas para PSCRIPT5 gerar o XML PrintCapabilities (Print Schema).
+*% Sem esses tres blocos, PTGetPrintCapabilities retorna E_FAIL e o preview
+*% do Edge nao carrega. Declarados como suporte minimo (impressora virtual).
+
+*OpenUI *Duplex/Impressao Frente e Verso: PickOne
+*DefaultDuplex: None
+*Duplex None/Somente Frente: ""
+*CloseUI: *Duplex
+
+*OpenUI *Collate/Agrupar: Boolean
+*DefaultCollate: False
+*Collate True/Ativado:    "<</Collate true>> setpagedevice"
+*Collate False/Desativado: "<</Collate false>> setpagedevice"
+*CloseUI: *Collate
+
+*OpenUI *InputSlot/Origem do Papel: PickOne
+*DefaultInputSlot: Auto
+*InputSlot Auto/Selecao Automatica: ""
+*CloseUI: *InputSlot
+
 *% Fonte padrão
 *DefaultFont: Courier
 *Font Courier: Standard "(001.007)" Standard ROM
