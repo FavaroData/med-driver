@@ -77,6 +77,16 @@ if (-not (Test-Path $PortReg)) {
 }
 Write-Host "  OK - Spooler em execucao, monitor e porta no registry"
 
+# Garante que 'Generic / Text Only' está presente — driver built-in do Windows usado como base.
+Write-Host "Verificando driver 'Generic / Text Only'..."
+if (-not (Get-PrinterDriver -Name "Generic / Text Only" -ErrorAction SilentlyContinue)) {
+    Write-Host "  Instalando 'Generic / Text Only'..."
+    Add-PrinterDriver -Name "Generic / Text Only" -ErrorAction Stop
+    Write-Host "  OK - instalado"
+} else {
+    Write-Host "  OK - ja presente"
+}
+
 # Instalação do driver PSCRIPT5 via registry — sem INF próprio e sem assinatura digital.
 # Não usa drivers inbox (PS Class Driver, Print To PDF) pois o Windows 10/11 bloqueia
 # drivers inbox com port monitors de terceiros (erro ID=242 no PrintService).
