@@ -36,7 +36,7 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx) {
     DWORD size;
 
     // log: registra qual chave do registry está sendo aberta
-    LogDebug("ReadConfig: abrindo Ports\\Med-driver Port\n");
+    LogDebug("ReadConfig: abrindo Ports\\%ls\n", PORT_NAME);
 
     // lê as configurações do registry, se nao encontrar retorna false
     LONG rc = RegOpenKeyExW(g_hkRoot, L"Ports\\" PORT_NAME, 0, KEY_READ, &hKey);
@@ -87,25 +87,24 @@ static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
     // cria o processo do Ghostscript
     // retorna TRUE ou FALSE se o processo foi criado com sucesso ou não
     // em caso de falha, mostra o erro no output debug do Windows (pode ser visualizado com ferramentas como DebugView)
+    LogDebug("ConvertPsToPdf: cmd=%ls\n", cmdLine);
+ 
     if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW,
                         NULL, NULL, &si, &pi)) {
         DWORD err = GetLastError();
-        WCHAR msg[256];
-        _snwprintf(msg, 256, L"[pdfmonitor] CreateProcess falhou. Erro: %lu\nCmd: %s\n", err, cmdLine);
-        OutputDebugStringW(msg);
+        LogDebug("ConvertPsToPdf: CreateProcess FALHOU err=%lu\n", err);
         return FALSE;
     }
-
+ 
     // Espera o Ghostscript terminar sem limite de tempo
-    // (Verificação necessária para garantir que o PDF seja gerado antes de prosseguir)
     WaitForSingleObject(pi.hProcess, INFINITE);
-    // vefifica se o processo terminou com sucesso (exit code 0)
     GetExitCodeProcess(pi.hProcess, &exitCode);
-    // fecha os handles do processo e thread do Ghostscript
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
+    LogDebug("ConvertPsToPdf: exitCode=%lu\n", exitCode);
     return exitCode == 0;
 }
+
 
 // Funções do monitor que serão chamadas pelo spooler
 
@@ -249,22 +248,33 @@ static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHand
 static BOOL WINAPI Monitor_StartDocPort(
     HANDLE hPort, LPWSTR pPrinterName, DWORD JobId, DWORD Level, LPBYTE pDocInfo)
 {
+    LogDebug("StartDocPort: hPort=%p pPrinterName=%ls JobId=%lu Level=%lu\n",
+        (void*)hPort,
+        pPrinterName ? pPrinterName : L"<NULL>",
+        JobId, Level);
+ 
     // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
     WCHAR         tempDir[MAX_PATH];
-
-    // cria o arquivo temporário para armazenar o conteúdo PostScript gerado pelo spooler
+ 
+    // cria o arquivo temporário para armazenar o conteúdo enviado pelo spooler
     GetTempPathW(MAX_PATH, tempDir);
     GetTempFileNameW(tempDir, L"pdfmon", 0, ctx->tempPsFile);
-
-    // referencia para o monitor do spooler, que vai escrever o conteúdo PostScript nesse arquivo temporário
+    LogDebug("StartDocPort: arquivo temporario = %ls\n", ctx->tempPsFile);
+ 
+    // abre o arquivo temporário para escrita
     ctx->hTempFile = CreateFileW(
         ctx->tempPsFile, GENERIC_WRITE, 0, NULL,
         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-
-    // retorna TRUE se o arquivo temporário foi criado com sucesso
-    return ctx->hTempFile != INVALID_HANDLE_VALUE;
+ 
+    BOOL ok = ctx->hTempFile != INVALID_HANDLE_VALUE;
+    LogDebug("StartDocPort: CreateFile %s (handle=%p err=%lu)\n",
+        ok ? "OK" : "FALHOU",
+        (void*)ctx->hTempFile,
+        ok ? 0 : GetLastError());
+    return ok;
 }
+
 
 // função para escrever os dados dentro do arquivo temporário criado no StartDocPort
 static BOOL WINAPI Monitor_WritePort(
@@ -276,6 +286,7 @@ static BOOL WINAPI Monitor_WritePort(
 {
     // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
+    LogDebug("WritePort: hPort=%p cbBuf=%lu\n", (void*)hPort, cbBuf);
     // escreve os bytes PostScript recebidos do spooler
     // caso haja falha na escrita, retorna FALSE e mostra o erro no output debug do Windows
     if (!WriteFile(ctx->hTempFile, pBuffer, cbBuf, pcbWritten, NULL)) {
@@ -308,20 +319,24 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
     BOOL          ok;
-
-    // fechha o arquivo temporário onde o conteúdo PostScript foi armazenado
+ 
+    // fecha o arquivo temporário onde o conteúdo PostScript foi armazenado
     // a fim de liberar o handle para o processo do Ghostscript ler o arquivo e convertê-lo para PDF
     CloseHandle(ctx->hTempFile);
     ctx->hTempFile = INVALID_HANDLE_VALUE;
-
+    LogDebug("EndDocPort: arquivo=%ls\n", ctx->tempPsFile);
+ 
     // chama a função de conversão de PS para PDF
+    LogDebug("EndDocPort: chamando Ghostscript\n");
     ok = ConvertPsToPdf(ctx);
+    LogDebug("EndDocPort: ConvertPsToPdf=%s\n", ok ? "OK" : "FALHOU");
     // deleta o arquivo temporário
     // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
     DeleteFileW(ctx->tempPsFile);
     // retorna o resultado da conversão do arquivo
     return ok;
 }
+
 
 // função chamada pelo spooler para fechar a porta de impressão
 // libera a memória alocada
@@ -344,9 +359,13 @@ static BOOL WINAPI Monitor_ClosePort(HANDLE hPort) {
 static BOOL WINAPI Monitor_XcvOpenPort(
     HANDLE hMonitor, LPCWSTR pObject, DWORD dwGrantedAccess, PHANDLE phXcv)
 {
-    // porta não suporta sessão de configuração XCV
-    (void)hMonitor; (void)pObject; (void)dwGrantedAccess; (void)phXcv;
-    return FALSE;
+    // O spooler exige TRUE aqui para aceitar conexões XcvMonitor.
+    // Retornar FALSE fazia o AddPrinterW falhar com 1801 porque o spooler
+    // testa o canal XCV antes de validar a porta no AddPrinterW.
+    // Devolvemos um handle fictício não-NULL para satisfazer o contrato.
+    (void)hMonitor; (void)pObject; (void)dwGrantedAccess;
+    if (phXcv) *phXcv = (HANDLE)1;
+    return TRUE;
 }
 
 static DWORD WINAPI Monitor_XcvDataPort(
@@ -362,9 +381,8 @@ static DWORD WINAPI Monitor_XcvDataPort(
 
 static BOOL WINAPI Monitor_XcvClosePort(HANDLE hXcv)
 {
-    // nada a fechar
     (void)hXcv;
-    return FALSE;
+    return TRUE;
 }
 
 // Stubs de ciclo de vida — campos obrigatórios da MONITOR2 completa (Windows 2000+/XP+/7+)

@@ -3,7 +3,7 @@
 # Parâmetros de saída
 param(
     [string]$OutputPath      = "C:\Users\favaro\Desktop\PDF\saida.pdf",
-    [string]$GhostscriptPath = "C:\Program Files\gs\gs10.02.1\bin\gswin64c.exe"
+    [string]$GhostscriptPath = "C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe"
 )
 
 # Configurações para o script de instalação do monitor 
@@ -16,7 +16,7 @@ $DllDest   = "$env:SystemRoot\System32\pdfmonitor.dll"
 $MonitorName = "MedMonitor"
 $PortName    = "MedPort"
 $PrinterName = "MedPrinter"
-$DriverName  = "Microsoft PS Class Driver"
+$DriverName = "Med PDF Printer"
 
 # Regs 
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
@@ -77,11 +77,45 @@ if (-not (Test-Path $PortReg)) {
 }
 Write-Host "  OK - Spooler em execucao, monitor e porta no registry"
 
-# Instalação do driver
-Write-Host "Instalando driver PostScript..."
+# Instalação do driver PSCRIPT5 via registry — sem INF próprio e sem assinatura digital.
+# Não usa drivers inbox (PS Class Driver, Print To PDF) pois o Windows 10/11 bloqueia
+# drivers inbox com port monitors de terceiros (erro ID=242 no PrintService).
+# PSCRIPT5 já está instalado e assinado pela Microsoft em System32\spool\drivers\x64\3\.
+# Registramos um driver customizado apontando para os arquivos existentes do PSCRIPT5
+# diretamente no registry do spooler — método que não exige assinatura adicional.
+Write-Host "Instalando driver PSCRIPT5 customizado..."
+$driverKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3\$DriverName"
 if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
-    Add-PrinterDriver -Name $DriverName -ErrorAction Stop
+    New-Item -Path $driverKey -Force | Out-Null
+    Set-ItemProperty $driverKey -Name "Configuration File" -Value "PS5UI.DLL"
+    Set-ItemProperty $driverKey -Name "Data File"          -Value "PSCRIPT.NTF"
+    Set-ItemProperty $driverKey -Name "Driver"             -Value "PSCRIPT5.DLL"
+    Set-ItemProperty $driverKey -Name "Help File"          -Value "PSCRIPT.HLP"
+    Set-ItemProperty $driverKey -Name "Driver Version"     -Value 3 -Type DWord
+    Set-ItemProperty $driverKey -Name "Version"            -Value 3 -Type DWord
+    Write-Host "  OK - driver '$DriverName' registrado via registry"
+} else {
+    Write-Host "  OK - driver '$DriverName' ja instalado"
 }
+
+# Aguarda o spooler reconhecer o driver recem registrado
+Start-Sleep -Seconds 3
+if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
+    Write-Host "ERRO: driver '$DriverName' nao reconhecido pelo spooler apos registro"
+    exit 1
+}
+
+# Copia o PPD e registra em Dependent Files — PSCRIPT5 abandona o job silenciosamente sem PPD.
+Write-Host "Instalando PPD do driver..."
+$PpdSource = Join-Path $ScriptDir "MEDPDF.PPD"
+$PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDPDF.PPD"
+if (-not (Test-Path $PpdSource)) {
+    Write-Host "ERRO: MEDPDF.PPD nao encontrado em $PpdSource"
+    exit 1
+}
+Copy-Item $PpdSource $PpdDest -Force
+Set-ItemProperty $driverKey -Name "Dependent Files" -Value @("MEDPDF.PPD", "") -Type MultiString
+Write-Host "  OK - PPD copiado e registrado em Dependent Files"
 
 # Registra a porta no spooler via AddPortExW antes de chamar AddPrinterW.
 # AddPrinterW valida a porta chamando EnumPorts cliente, que retorna ERROR_INVALID_DATA (13)
@@ -154,8 +188,8 @@ $pi2.pPrinterName    = $PrinterName
 $pi2.pPortName       = $PortName
 $pi2.pDriverName     = $DriverName
 $pi2.pPrintProcessor = "winprint"
-$pi2.pDatatype       = "RAW"
-$pi2.Attributes      = 64   # PRINTER_ATTRIBUTE_LOCAL
+$pi2.pDatatype       = "RAW"    # PSCRIPT5 entrega PS como RAW ao port monitor
+$pi2.Attributes      = 0x40  # PRINTER_ATTRIBUTE_LOCAL = 64
 
 Write-Host "Registrando impressora via AddPrinterW..."
 Write-Host "  pPrinterName   : $($pi2.pPrinterName)"
