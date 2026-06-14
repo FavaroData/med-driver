@@ -83,6 +83,34 @@ if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
     Add-PrinterDriver -Name $DriverName -ErrorAction Stop
 }
 
+# Registra a porta no spooler via AddPortExW antes de chamar AddPrinterW.
+# AddPrinterW valida a porta chamando EnumPorts cliente, que retorna ERROR_INVALID_DATA (13)
+# para monitores customizados devido a falha de ponteiro no merge RPC.
+# AddPortExW usa caminho diferente no spooler (chama pfnAddPortEx no monitor) e contorna o problema.
+Add-Type -TypeDefinition "
+using System;
+using System.Runtime.InteropServices;
+public class PortRegistrar {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PORT_INFO_1 {
+        public string pName;
+    }
+    [DllImport(""winspool.drv"", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool AddPortEx(string pName, uint Level, ref PORT_INFO_1 lpBuffer, string lpMonitorName);
+}
+" -ErrorAction SilentlyContinue
+
+$pi1       = New-Object PortRegistrar+PORT_INFO_1
+$pi1.pName = $PortName
+Write-Host "Registrando porta via AddPortExW..."
+$portOk = [PortRegistrar]::AddPortEx($null, 1, [ref]$pi1, $MonitorName)
+if (-not $portOk) {
+    $portErr = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    Write-Host "  AVISO: AddPortExW falhou (Win32 erro $portErr)"
+} else {
+    Write-Host "  OK - porta registrada via AddPortExW"
+}
+
 # P/Invoke direto ao AddPrinterW — bypassa CIM/WMI e expoe o codigo Win32 exato.
 # Add-Printer usava o caminho CIM que retornava so a string localizada do erro,
 # impedindo diagnostico. Aqui controlamos todos os campos de PRINTER_INFO_2W.

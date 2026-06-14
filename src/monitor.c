@@ -397,6 +397,22 @@ static DWORD WINAPI Monitor_NotifyUnusedPorts(
     return ERROR_NOT_SUPPORTED;
 }
 
+static BOOL WINAPI Monitor_AddPortEx(
+    HANDLE  hMonitor,
+    LPWSTR  pName,
+    DWORD   Level,
+    LPBYTE  lpBuffer,
+    LPWSTR  lpMonitorName)
+{
+    LogDebug("AddPortEx: Level=%lu pName=%ls monitorName=%ls\n",
+        Level,
+        pName       ? pName       : L"<NULL>",
+        lpMonitorName ? lpMonitorName : L"<NULL>");
+    (void)hMonitor; (void)pName; (void)Level;
+    (void)lpBuffer; (void)lpMonitorName;
+    return TRUE;
+}
+
 // Entrada da DLL chamada pelo Windows para carregar antes de chamar as funções
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     (void)hinstDLL; (void)fdwReason; (void)lpvReserved;
@@ -436,6 +452,7 @@ LPMONITOR2 WINAPI InitializePrintMonitor2(PMONITORINIT pMonitorInit, PHANDLE phM
     g_monitor2.pfnSendRecvBidiDataFromPort  = Monitor_SendRecvBidi;
     g_monitor2.pfnNotifyUsedPorts           = Monitor_NotifyUsedPorts;
     g_monitor2.pfnNotifyUnusedPorts         = Monitor_NotifyUnusedPorts;
+    g_monitor2.pfnAddPortEx                 = Monitor_AddPortEx;
 
     // log: confirma tamanho e ponteiros do MONITOR2 antes de retornar ao Spooler
     // %lu com cast porque msvcrt.dll não suporta %zu (C99)
