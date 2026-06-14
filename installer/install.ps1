@@ -108,14 +108,8 @@ if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
     Write-Host "  OK - driver '$DriverName' ja instalado"
 }
 
-# Aguarda o spooler reconhecer o driver recem registrado
-Start-Sleep -Seconds 3
-if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
-    Write-Host "ERRO: driver '$DriverName' nao reconhecido pelo spooler apos registro"
-    exit 1
-}
-
-# Copia o PPD e registra em Dependent Files — PSCRIPT5 abandona o job silenciosamente sem PPD.
+# Copia o PPD e registra em Dependent Files ANTES de reiniciar o spooler —
+# PSCRIPT5 abandona o job silenciosamente sem PPD.
 Write-Host "Instalando PPD do driver..."
 $PpdSource = Join-Path $ScriptDir "MEDPDF.PPD"
 $PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDPDF.PPD"
@@ -126,6 +120,18 @@ if (-not (Test-Path $PpdSource)) {
 Copy-Item $PpdSource $PpdDest -Force
 Set-ItemProperty $driverKey -Name "Dependent Files" -Value @("MEDPDF.PPD", "") -Type MultiString
 Write-Host "  OK - PPD copiado e registrado em Dependent Files"
+
+# O spooler so enumera drivers injetados via registry no startup. Gravar as chaves
+# com ele em execucao nao basta — e preciso reiniciar para que ele leia a chave do
+# driver (com o PPD ja no lugar) e o reconheca. Um Start-Sleep nao dispara isso.
+Write-Host "Reiniciando o Spooler para enumerar o driver..."
+Restart-Service -Name Spooler -Force
+Start-Sleep -Seconds 3
+if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
+    Write-Host "ERRO: driver '$DriverName' nao reconhecido pelo spooler apos registro"
+    exit 1
+}
+Write-Host "  OK - driver '$DriverName' reconhecido pelo spooler"
 
 # Registra a porta no spooler via AddPortExW antes de chamar AddPrinterW.
 # AddPrinterW valida a porta chamando EnumPorts cliente, que retorna ERROR_INVALID_DATA (13)
