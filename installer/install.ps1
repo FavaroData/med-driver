@@ -97,12 +97,15 @@ Write-Host "Instalando driver PSCRIPT5 customizado..."
 $driverKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3\$DriverName"
 if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
     New-Item -Path $driverKey -Force | Out-Null
-    Set-ItemProperty $driverKey -Name "Configuration File" -Value "PS5UI.DLL"
-    Set-ItemProperty $driverKey -Name "Data File"          -Value "PSCRIPT.NTF"
-    Set-ItemProperty $driverKey -Name "Driver"             -Value "PSCRIPT5.DLL"
-    Set-ItemProperty $driverKey -Name "Help File"          -Value "PSCRIPT.HLP"
-    Set-ItemProperty $driverKey -Name "Driver Version"     -Value 3 -Type DWord
-    Set-ItemProperty $driverKey -Name "Version"            -Value 3 -Type DWord
+    Set-ItemProperty $driverKey -Name "Configuration File"      -Value "PS5UI.DLL"
+    Set-ItemProperty $driverKey -Name "Data File"               -Value "PSCRIPT.NTF"
+    Set-ItemProperty $driverKey -Name "Driver"                  -Value "PSCRIPT5.DLL"
+    Set-ItemProperty $driverKey -Name "Help File"               -Value "PSCRIPT.HLP"
+    Set-ItemProperty $driverKey -Name "Driver Version"          -Value 3 -Type DWord
+    Set-ItemProperty $driverKey -Name "Version"                 -Value 3 -Type DWord
+    # PRINTER_DRIVER_XPS (0x2) — habilita o Print Ticket Provider do PSCRIPT5.
+    # Sem esse flag PTGetPrintCapabilities retorna E_FAIL e o Edge nao carrega o preview.
+    Set-ItemProperty $driverKey -Name "PrinterDriverAttributes" -Value 2 -Type DWord
     Write-Host "  OK - driver '$DriverName' registrado via registry"
 } else {
     Write-Host "  OK - driver '$DriverName' ja instalado"
