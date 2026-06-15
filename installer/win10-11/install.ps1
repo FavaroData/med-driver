@@ -17,11 +17,11 @@ $DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
 $MonitorName = "Meddrive Printer MONITOR"
 $DriverName  = "Meddrive Printer DRIVER"
 
-# deriva o sufixo da porta: remove "Meddrive Printer", "-" e todos os espaços
+# determina o nome com o sufixo da porta: remove "Meddrive Printer" (Nome da Impressora Padronizado), "-" e todos os espaços
 $portSuffix = $PrinterName -replace 'Meddrive Printer', '' -replace '-', '' -replace '\s', ''
 $PortName   = if ($portSuffix) { "Meddrive Printer PORT $portSuffix" } else { "Meddrive Printer PORT" }
 
-# Regs 
+# Caminho do registry para o monitor e a porta 
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 $PortReg     = "$MonitorReg\Ports\$PortName"
 
@@ -63,10 +63,8 @@ Start-Service -Name Spooler
 Write-Host "Aguardando o Spooler carregar o monitor..."
 Start-Sleep -Seconds 5
 
-# Win32 EnumPorts via winspool.drv retorna ERROR_INVALID_DATA (13) para monitores customizados
-# no Windows 10/11 — falha de validacao de ponteiro no merge RPC do spooler.
-# O Add-Printer usa o caminho interno do spooler que funciona corretamente.
-# Verificamos apenas registry + status do servico como pre-condicao minima.
+# Verificação do registry + status do servico como pre-condicao minima para prosseguir,
+# POsteriormente o AddPrinterW fará a validacao final da porta.
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
     Write-Host "ERRO: Spooler nao esta em execucao (status: $spoolerStatus)"
@@ -82,7 +80,7 @@ if (-not (Test-Path $PortReg)) {
 }
 Write-Host "  OK - Spooler em execucao, monitor e porta no registry"
 
-# Garante que 'Generic / Text Only' está presente — driver built-in do Windows usado como base.
+# Verificação do driver 'Generic / Text Only' está presente — driver built-in do Windows usado como base.
 Write-Host "Verificando driver 'Generic / Text Only'..."
 if (-not (Get-PrinterDriver -Name "Generic / Text Only" -ErrorAction SilentlyContinue)) {
     Write-Host "  Instalando 'Generic / Text Only'..."
@@ -117,7 +115,7 @@ if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
 }
 
 # Copia o PPD e registra em Dependent Files ANTES de reiniciar o spooler —
-# PSCRIPT5 abandona o job silenciosamente sem PPD.
+# PSCRIPT5 abandona o job sem PPD registrado, mesmo que o driver esteja presente no registry.
 Write-Host "Instalando PPD do driver..."
 $PpdSource = Join-Path $ScriptDir "MEDDRIVE.PPD"
 $PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
@@ -129,9 +127,9 @@ Copy-Item $PpdSource $PpdDest -Force
 Set-ItemProperty $driverKey -Name "Dependent Files" -Value @("MEDDRIVE.PPD", "") -Type MultiString
 Write-Host "  OK - PPD copiado e registrado em Dependent Files"
 
-# O spooler so enumera drivers injetados via registry no startup. Gravar as chaves
-# com ele em execucao nao basta — e preciso reiniciar para que ele leia a chave do
-# driver (com o PPD ja no lugar) e o reconheca. Um Start-Sleep nao dispara isso.
+# O spooler só enumera drivers injetados via registry no startup. 
+# Gravar as chaves com ele em execucao nao basta — e preciso reiniciar para que ele leia a chave do
+# driver (com o PPD ja no lugar) e o reconheça.
 Write-Host "Reiniciando o Spooler para enumerar o driver..."
 Restart-Service -Name Spooler -Force
 Start-Sleep -Seconds 3
@@ -142,7 +140,7 @@ if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
 Write-Host "  OK - driver '$DriverName' reconhecido pelo spooler"
 
 # Registra a porta no spooler via AddPortExW antes de chamar AddPrinterW.
-# AddPrinterW valida a porta chamando EnumPorts cliente, que retorna ERROR_INVALID_DATA (13)
+# AddPrinterW valida a porta chamando EnumPorts, que retorna ERROR_INVALID_DATA (13)
 # para monitores customizados devido a falha de ponteiro no merge RPC.
 # AddPortExW usa caminho diferente no spooler (chama pfnAddPortEx no monitor) e contorna o problema.
 Add-Type -TypeDefinition "

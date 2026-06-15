@@ -4,7 +4,9 @@
 #define WIN32_LEAN_AND_MEAN
 #define NTDDI_VERSION 0x0A000000
 #include <windows.h>
+// winspool.h serve para as estruturas e definições de funções do Spooler
 #include <winspool.h>
+// e winsplp.h para as definições de funções do monitor de impressão
 #include <winsplp.h>
 
 #define MONITOR_NAME  L"Meddrive Printer MONITOR"

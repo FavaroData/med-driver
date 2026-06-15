@@ -14,7 +14,7 @@ OutFile       "..\MeddrivePrinter-Setup.exe"
 InstallDir    "$TEMP\MedPDFPrinter"
 BrandingText  "Meddrive Printer"
 
-; solicita elevação UAC — o Windows exibe o prompt ao abrir o instalador
+; solicita admin 
 RequestExecutionLevel admin
 
 ; ---------- variáveis ----------
