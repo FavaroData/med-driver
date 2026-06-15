@@ -96,14 +96,17 @@ Section "Instalar Meddrive Printer" SecInstall
     File "MEDDRIVE.PPD"
     File "install.ps1"
 
-    ; extrai Ghostscript bundled para Program Files
-    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\bin"
+    ; lê ProgramData do ambiente Windows em tempo de execução
+    ReadEnvStr $R0 "ProgramData"
+
+    ; extrai Ghostscript bundled para ProgramData
+    SetOutPath "$R0\Meddrive Printer\Ghostscript\bin"
     File /r "..\..\gs\ghostscript\bin\*"
-    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\lib"
+    SetOutPath "$R0\Meddrive Printer\Ghostscript\lib"
     File /r "..\..\gs\ghostscript\lib\*"
-    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\Resource"
+    SetOutPath "$R0\Meddrive Printer\Ghostscript\Resource"
     File /r "..\..\gs\ghostscript\Resource\*"
-    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\iccprofiles"
+    SetOutPath "$R0\Meddrive Printer\Ghostscript\iccprofiles"
     File /r "..\..\gs\ghostscript\iccprofiles\*"
 
     StrCpy $1 "$OutputFolder\saida.pdf"
@@ -129,6 +132,6 @@ Section "Instalar Meddrive Printer" SecInstall
     DetailPrint "Instalação concluída."
     DetailPrint "  Impressora : $PrinterName"
     DetailPrint "  Saída      : $1"
-    DetailPrint "  Ghostscript: $PROGRAMFILES64\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+    DetailPrint "  Ghostscript: $R0\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 SectionEnd

@@ -5,7 +5,7 @@ param(
     [string]$PrinterName = "Meddrive Printer"
 )
 
-$GhostscriptPath = "$env:ProgramFiles\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+$GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
