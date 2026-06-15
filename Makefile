@@ -20,7 +20,10 @@ $(TARGET): $(OBJS) $(DEF)
 src/%.o: src/%.c src/monitor.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
+installer: $(TARGET)
+	makensis installer/setup.nsi
+
 clean:
 	rm -f src/*.o $(TARGET)
 
-.PHONY: all clean
+.PHONY: all clean installer
