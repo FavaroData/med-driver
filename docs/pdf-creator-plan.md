@@ -1,173 +1,128 @@
-# PDF Creator — Monitor de Porta Customizado
+# Meddrive Printer — Referência de Arquitetura Interna
 
-## Visão geral
-
-Criar um monitor de porta para Windows que intercepta jobs de impressão PostScript,
-converte para PDF usando Ghostscript e salva automaticamente em um path configurado.
+> Este documento detalha a implementação interna da DLL e do protocolo Print Monitor 2.
+> Para visão geral, decisões e fluxo de instalação, veja `impressora_virtual_documentacao.md`.
 
 ---
 
-## O que é um monitor de porta
+## Interface Print Monitor 2
 
-O Windows Print Spooler precisa de um componente que defina o que fazer com os bytes
-de um job de impressão. Em impressoras físicas esse componente envia os bytes para a
-USB ou rede. No nosso caso, ele recebe o PostScript e converte para PDF.
+O Windows Spooler carrega `meddrivemon.dll` e chama `InitializePrintMonitor2`, que retorna
+um ponteiro para a struct `MONITOR2` com os callbacks implementados:
 
----
-
-## Arquitetura
-
-```
-Usuário clica em Imprimir
-        ↓
-Windows Print Spooler
-        ↓
-Microsoft PS Class Driver
-transforma o documento em PostScript
-        ↓
-meumonitor.dll (seu monitor de porta)
-recebe os bytes via WritePort()
-        ↓
-Ghostscript
-converte PostScript → PDF
-        ↓
-PDF salvo em C:\PDFs\saida.pdf
-```
-
----
-
-## O que você cria e o que reutiliza
-
-| Camada | Ação |
-|---|---|
-| Driver PostScript | reutiliza — Microsoft PS Class Driver |
-| Print Processor | reutiliza — padrão do Windows |
-| Monitor de porta | **cria — meumonitor.dll** |
-| Registro no Windows | **cria — install.ps1** |
-
----
-
-## Estrutura do projeto
-
-```
-pdf-monitor/
-├── src/
-│   ├── monitor.c        ← implementação do monitor de porta
-│   ├── monitor.h        ← definições e structs
-│   └── monitor.def      ← exports da DLL
-├── installer/
-│   └── install.ps1      ← registra a DLL e a impressora no Windows
-└── Makefile             ← build com MinGW ou MSVC
+```c
+typedef struct {
+    DWORD  cbSize;
+    // portas
+    BOOL  (*pfnEnumPorts)(...);
+    BOOL  (*pfnOpenPort)(...);
+    BOOL  (*pfnOpenPortEx)(...);
+    BOOL  (*pfnStartDocPort)(...);
+    BOOL  (*pfnWritePort)(...);
+    BOOL  (*pfnReadPort)(...);
+    BOOL  (*pfnEndDocPort)(...);
+    BOOL  (*pfnClosePort)(...);
+    // adicionar porta
+    BOOL  (*pfnAddPortEx)(...);
+    // XCV (comunicação com UI)
+    BOOL  (*pfnXcvOpenPort)(...);
+    DWORD (*pfnXcvDataPort)(...);
+    BOOL  (*pfnXcvClosePort)(...);
+    // monitor
+    VOID  (*pfnShutdown)(...);
+} MONITOR2;
 ```
 
+### Quando cada callback é chamado
+
+| Callback | Quando | O que a DLL faz |
+|---|---|---|
+| `InitializePrintMonitor2` | Spooler carrega a DLL | Preenche a struct MONITOR2, retorna ponteiro |
+| `EnumPorts` | Windows lista portas disponíveis | Retorna `Meddrive Printer PORT` |
+| `OpenPort` | Spooler abre a porta para um job | Aloca `PORT_CONTEXT` |
+| `StartDocPort` | Início do documento | Cria arquivo `.ps` temporário em `%TEMP%`, abre handle |
+| `WritePort` | Bytes de PS chegando (chamado várias vezes) | Acumula bytes no arquivo `.ps` |
+| `EndDocPort` | Documento completo | Fecha o `.ps`, chama Ghostscript, deleta o `.ps` |
+| `ClosePort` | Job encerrado | Libera `PORT_CONTEXT` |
+| `AddPortEx` | `AddPortExW` chamado no install.ps1 | Retorna TRUE (porta já está no registry) |
+| `XcvOpenPort` | UI do spooler conecta | Retorna handle válido |
+| `XcvDataPort` | UI consulta propriedades da porta | Responde `MonitorUI` e `PortIsLocal` |
+| `XcvClosePort` | UI desconecta | Retorna TRUE |
+
 ---
 
-## Funções que a DLL exporta
+## PORT_CONTEXT
 
-O Spooler chama essas funções na sua DLL:
+Estrutura alocada por porta durante o ciclo de vida de um job:
 
-| Função | Quando é chamada |
-|---|---|
-| `InitializePortMonitor` | quando o Spooler carrega a DLL |
-| `EnumPorts` | quando o Windows lista as portas disponíveis |
-| `OpenPort` | quando um job está chegando |
-| `StartDocPort` | início do documento |
-| `WritePort` | recebe os bytes do PostScript (chamada várias vezes) |
-| `EndDocPort` | documento completo — aqui chama o Ghostscript |
-| `ClosePort` | encerra a porta |
-
----
-
-## Fluxo interno da DLL
-
-```
-OpenPort()
-  → aloca buffer para receber os bytes
-
-WritePort()
-  → acumula os bytes do PostScript no buffer
-
-EndDocPort()
-  → salva o buffer em um .ps temporário
-  → lê o path de saída do registry
-  → chama: gswin64c.exe -dBATCH -dNOPAUSE -sDEVICE=pdfwrite
-                        -sOutputFile={path} arquivo.ps
-  → deleta o .ps temporário
-
-ClosePort()
-  → libera o buffer
+```c
+typedef struct {
+    WCHAR  outputPath[MAX_PATH];      // lido do registry em OpenPort
+    WCHAR  ghostscriptPath[MAX_PATH]; // lido do registry em OpenPort
+    WCHAR  tempPsFile[MAX_PATH];      // gerado em StartDocPort via GetTempFileName
+    HANDLE hTempFile;                 // handle do arquivo .ps aberto em StartDocPort
+} PORT_CONTEXT;
 ```
 
 ---
 
-## Configuração — Registry
-
-O path de saída fica salvo no registry:
+## Fluxo interno detalhado
 
 ```
-HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\PDF Creator Monitor\Ports\PDF Creator Port
-    OutputPath  = "C:\PDFs\saida.pdf"
-    GhostscriptPath = "C:\Program Files\gs\gs10.02.1\bin\gswin64c.exe"
-```
+OpenPort("Meddrive Printer PORT")
+  → aloca PORT_CONTEXT
+  → lê OutputPath e GhostscriptPath do registry
 
-Para múltiplas impressoras, cada porta tem sua própria chave com seu próprio `OutputPath`.
+StartDocPort(hPort, pPrinterName, JobId, Level, pDocInfo)
+  → GetTempPath() + GetTempFileName() → tempPsFile
+  → CreateFile(tempPsFile) → hTempFile
 
----
+WritePort(hPort, pBuffer, cbBuf, pcbWritten)   [chamado N vezes]
+  → WriteFile(hTempFile, pBuffer, cbBuf)
 
-## Registro do monitor no Windows
+EndDocPort(hPort)
+  → CloseHandle(hTempFile)
+  → monta cmdLine:
+      gswin64c.exe -dBATCH -dNOPAUSE -sDEVICE=pdfwrite
+                   -sOutputFile="<outputPath>" "<tempPsFile>"
+  → CreateProcess(cmdLine)
+  → WaitForSingleObject(hProcess, INFINITE)
+  → DeleteFile(tempPsFile)
 
-```
-HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\PDF Creator Monitor
-    Driver = "pdfmonitor.dll"
-```
-
----
-
-## Instalação (`install.ps1`)
-
-O script PowerShell faz tudo em sequência:
-
-```
-1. Copia pdfmonitor.dll para C:\Windows\System32\spool\
-2. Registra o monitor no registry
-3. Instala o driver: Add-PrinterDriver -Name "Microsoft PS Class Driver"
-4. Adiciona a porta com o path configurado
-5. Registra a impressora: Add-Printer -Name "PDF Creator"
-                                      -DriverName "Microsoft PS Class Driver"
-                                      -PortName "PDF Creator Port"
+ClosePort(hPort)
+  → HeapFree(PORT_CONTEXT)
 ```
 
 ---
 
-## Stack
+## Registry lido em OpenPort
 
-| Peça | Tecnologia |
-|---|---|
-| Monitor de porta | C (Win32 API) |
-| Conversão PS→PDF | Ghostscript (`gswin64c.exe`) via `CreateProcess` |
-| Registro no Windows | PowerShell (`install.ps1`) |
-| Compilador | MinGW (gcc) ou MSVC (Visual Studio) |
-| Referência | Microsoft Docs — Print Monitor |
-
----
-
-## Requisitos
-
-- Windows 10 ou 11
-- [Ghostscript para Windows](https://www.ghostscript.com/releases/gsdnld.html)
-- MinGW ou Visual Studio (para compilar a DLL)
-- PowerShell 5+ (já incluso no Windows 10/11)
-- Executar o instalador como Administrador
+```
+HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors
+    \Meddrive Printer MONITOR
+        Driver = "meddrivemon.dll"
+        \Ports
+            \Meddrive Printer PORT
+                OutputPath      = "C:\...\saida.pdf"
+                GhostscriptPath = "C:\Program Files\gs\...\gswin64c.exe"
+```
 
 ---
 
-## Ordem de implementação
+## Compilação
 
-- [ ] 1. Instalar MinGW ou Visual Studio
-- [ ] 2. Instalar Ghostscript e testar no terminal
-- [ ] 3. `monitor.h` — structs e definições
-- [ ] 4. `monitor.c` — implementar as 7 funções exportadas
-- [ ] 5. `monitor.def` — declarar os exports da DLL
-- [ ] 6. Compilar e gerar `pdfmonitor.dll`
-- [ ] 7. `install.ps1` — registrar no Windows
-- [ ] 8. Teste: imprimir de qualquer app e verificar o PDF gerado
+```makefile
+CC      = x86_64-w64-mingw32-gcc
+TARGET  = meddrivemon.dll
+CFLAGS  = -Wall -Wextra -O2 -municode
+LDFLAGS = -shared -static-libgcc -lkernel32 -ladvapi32
+```
+
+O `.def` exporta apenas `InitializePrintMonitor2` — o spooler descobre os demais via a struct `MONITOR2`.
+
+```
+; monitor.def
+LIBRARY meddrivemon
+EXPORTS
+    InitializePrintMonitor2
+```
