@@ -49,11 +49,9 @@ O **Ghostscript** é um interpretador de PostScript e PDF. Nesse projeto, ele é
 
 1. Execute como administrador o instalador `MeddrivePrinter-Setup.exe`
 
-> Se aparecer o erro "não pode ser carregado porque a execução de scripts foi desabilitada neste sistema", use:
+> Se aparecer o erro "não pode ser carregado porque a execução de scripts foi desabilitada neste sistema", use, para liberar permanentemente para o seu usuario:
 > ```powershell
-> para liberar permanentemente para o seu usuario:
-
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 > ```
 
 ## Configuração
