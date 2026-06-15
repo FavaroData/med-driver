@@ -4,7 +4,7 @@ $DllPath     = "$env:SystemRoot\System32\pdfmonitor.dll"
 $MonitorName = "MedMonitor"
 $PortName    = "MedPort"
 $PrinterName = "MedPrinter"
-$DriverName = "Generic / Text Only"
+$DriverName = "Med PDF Printer"
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 $PortReg     = "$MonitorReg\Ports\$PortName"
 
@@ -91,9 +91,9 @@ Write-Host "[7] Status do Spooler"
 $spooler = Get-Service -Name Spooler
 Write-Host "  Status: $($spooler.Status)"
 
-# 7b. Teste AddPrinter com portas nativas (isola se o problema é a MedPort ou o ambiente)
+# 7b. Teste AddPrinter — verifica se a impressora pode ser criada com nosso driver e porta
 Write-Host ""
-Write-Host "[7b] Teste AddPrinter com portas nativas"
+Write-Host "[7b] Teste AddPrinter ($DriverName + $PortName)"
 Add-Type -TypeDefinition "
 using System;
 using System.Runtime.InteropServices;
@@ -129,34 +129,68 @@ public class DbgPrinter {
 }
 " -ErrorAction SilentlyContinue
 
-function Test-AddPrinter($testName, $portName, $driverName) {
-    $pi = New-Object DbgPrinter+PRINTER_INFO_2
-    $pi.pPrinterName    = $testName
-    $pi.pPortName       = $portName
-    $pi.pDriverName     = $driverName
-    $pi.pPrintProcessor = "winprint"
-    $pi.pDatatype       = "RAW"
-    $pi.Attributes      = 0x40
+$testName = "DiagPrinter_Temp"
+$pi = New-Object DbgPrinter+PRINTER_INFO_2
+$pi.pPrinterName    = $testName
+$pi.pPortName       = $PortName
+$pi.pDriverName     = $DriverName
+$pi.pPrintProcessor = "winprint"
+$pi.pDatatype       = "RAW"
+$pi.Attributes      = 0x40
+Remove-Printer -Name $testName -ErrorAction SilentlyContinue
+$h = [DbgPrinter]::AddPrinter($null, 2, [ref]$pi)
+$e = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+if ($h -ne [IntPtr]::Zero) {
+    Write-Host "  OK - AddPrinter retornou handle=$h"
+    [DbgPrinter]::ClosePrinter($h) | Out-Null
     Remove-Printer -Name $testName -ErrorAction SilentlyContinue
-    $h = [DbgPrinter]::AddPrinter($null, 2, [ref]$pi)
-    $e = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    if ($h -ne [IntPtr]::Zero) {
-        Write-Host "  OK   [$portName] handle=$h"
-        [DbgPrinter]::ClosePrinter($h) | Out-Null
-        Remove-Printer -Name $testName -ErrorAction SilentlyContinue
-    } else {
-        Write-Host "  FAIL [$portName] erro Win32=$e"
-    }
+} else {
+    Write-Host "  FAIL - AddPrinter falhou, Win32 erro=$e"
 }
 
-# Teste 1: porta nativa FILE: — sempre existe, sem monitor customizado
-Test-AddPrinter "DiagPrinter_FILE"   "FILE:"   "Microsoft Print To PDF"
-# Teste 2: porta nativa LPT1: — porta física padrão
-Test-AddPrinter "DiagPrinter_LPT1"  "LPT1:"   "Microsoft Print To PDF"
-# Teste 3: nossa porta customizada com driver PDF nativo
-Test-AddPrinter "DiagPrinter_MedPDF" $PortName "Microsoft Print To PDF"
-# Teste 4: nossa porta customizada com driver PS (o que o install.ps1 usa)
-Test-AddPrinter "DiagPrinter_MedPS"  $PortName "Microsoft PS Class Driver"
+# 7c. Driver Med PDF Printer no registry
+Write-Host ""
+Write-Host "[7c] Driver '$DriverName' no registry"
+$driverKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3\$DriverName"
+if (Test-Path $driverKey) {
+    $dp = Get-ItemProperty $driverKey -ErrorAction SilentlyContinue
+    Write-Host "  OK - chave encontrada"
+    Write-Host "  Driver                  = $($dp.Driver)"
+    Write-Host "  Configuration File      = $($dp.'Configuration File')"
+    Write-Host "  Data File               = $($dp.'Data File')"
+    $attrs = $dp.PrinterDriverAttributes
+    $attrsLabel = if ($attrs -eq 2) { "PRINTER_DRIVER_XPS — correto" } else { "ATENCAO: esperado 2" }
+    Write-Host "  PrinterDriverAttributes = $attrs ($attrsLabel)"
+    Write-Host "  Dependent Files         = $($dp.'Dependent Files' -join ', ')"
+    $ppdPath = "C:\Windows\System32\spool\drivers\x64\3\MEDPDF.PPD"
+    if (Test-Path $ppdPath) {
+        $ppd = Get-Item $ppdPath
+        Write-Host "  PPD: OK - $ppdPath ($([math]::Round($ppd.Length / 1024)) KB)"
+    } else {
+        Write-Host "  PPD: FALHOU - nao encontrado em $ppdPath"
+    }
+} else {
+    Write-Host "  FALHOU - chave nao encontrada: $driverKey"
+}
+
+# 7d. Impressora MedPrinter
+Write-Host ""
+Write-Host "[7d] Impressora '$PrinterName'"
+$printer = Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue
+if ($printer) {
+    Write-Host "  OK - impressora encontrada"
+    Write-Host "  DriverName    = $($printer.DriverName)"
+    Write-Host "  PortName      = $($printer.PortName)"
+    Write-Host "  PrinterStatus = $($printer.PrinterStatus)"
+    if ($printer.DriverName -ne $DriverName) {
+        Write-Host "  ATENCAO - driver incorreto (esperado: $DriverName)"
+    }
+    if ($printer.PortName -ne $PortName) {
+        Write-Host "  ATENCAO - porta incorreta (esperado: $PortName)"
+    }
+} else {
+    Write-Host "  FALHOU - impressora nao encontrada"
+}
 
 # 8. Carregamento manual da DLL
 Write-Host ""
