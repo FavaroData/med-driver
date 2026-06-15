@@ -1,6 +1,6 @@
-; Meddrive Printer — instalador NSIS
+; Meddrive Printer — instalador NSIS para Windows 7 x64
 ; Requer: makensis (NSIS >= 3.0)
-; Gera:   MedPDFPrinter-Setup.exe
+; Gera:   MeddrivePrinter-Win7-Setup.exe
 
 Target amd64-unicode
 Unicode True
@@ -10,11 +10,11 @@ Unicode True
 
 ; ---------- metadados ----------
 Name          "Meddrive Printer"
-OutFile       "..\..\MeddrivePrinter-Setup.exe"
+OutFile       "..\..\MeddrivePrinter-Win7-Setup.exe"
 InstallDir    "$TEMP\MedPDFPrinter"
 BrandingText  "Meddrive Printer"
 
-; solicita admin 
+; solicita elevação UAC — o Windows exibe o prompt ao abrir o instalador
 RequestExecutionLevel admin
 
 ; ---------- variáveis ----------

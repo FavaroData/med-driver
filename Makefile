@@ -21,9 +21,14 @@ src/%.o: src/%.c src/monitor.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 installer: $(TARGET)
-	makensis installer/setup.nsi
+	makensis installer/win10-11/setup.nsi
+
+installer-win7: $(TARGET)
+	makensis installer/win7/setup.nsi
+
+installers: installer installer-win7
 
 clean:
 	rm -f src/*.o $(TARGET)
 
-.PHONY: all clean installer
+.PHONY: all clean installer installer-win7 installers
