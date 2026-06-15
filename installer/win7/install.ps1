@@ -10,6 +10,9 @@ $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.e
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DllSource = Join-Path $ScriptDir "..\meddrivemon.dll"
+if (-not (Test-Path $DllSource)) {
+    $DllSource = Join-Path $ScriptDir "..\..\meddrivemon.dll"
+}
 $DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
 
 $MonitorName = "Meddrive Printer MONITOR"
