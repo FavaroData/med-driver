@@ -51,7 +51,9 @@ O **Ghostscript** é um interpretador de PostScript e PDF. Nesse projeto, ele é
 
 > Se aparecer o erro "não pode ser carregado porque a execução de scripts foi desabilitada neste sistema", use:
 > ```powershell
-> powershell -ExecutionPolicy Bypass -File .\install.ps1
+> para liberar permanentemente para o seu usuario:
+
+  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 > ```
 
 ## Configuração
