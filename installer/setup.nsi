@@ -122,9 +122,11 @@ Section "Instalar Med PDF Printer" SecInstall
 
     Call DetectGhostscript
 
-    ; extrai arquivos para pasta temporária
+    ; espelha estrutura do repositório: DLL na raiz, installer/ com os scripts
+    ; install.ps1 usa "$ScriptDir\..\pdfmonitor.dll" para localizar a DLL
     SetOutPath "$INSTDIR"
     File "..\pdfmonitor.dll"
+    SetOutPath "$INSTDIR\installer"
     File "MEDPDF.PPD"
     File "install.ps1"
 
@@ -132,17 +134,14 @@ Section "Instalar Med PDF Printer" SecInstall
     StrCpy $1 "$OutputFolder\saida.pdf"
 
     ; executa o instalador PowerShell com os parâmetros configurados
-    DetailPrint "Executando instalador..."
-    nsExec::ExecToLog \
-        'powershell.exe -ExecutionPolicy Bypass -NonInteractive \
-         -File "$INSTDIR\install.ps1" \
-         -OutputPath "$1" \
-         -GhostscriptPath "$GhostscriptPath"'
+    DetailPrint "Executando instalador PowerShell..."
+    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1" -OutputPath "$1" -GhostscriptPath "$GhostscriptPath"'
     Pop $0
 
     ; limpa temporários
-    Delete "$INSTDIR\install.ps1"
-    Delete "$INSTDIR\MEDPDF.PPD"
+    Delete "$INSTDIR\installer\install.ps1"
+    Delete "$INSTDIR\installer\MEDPDF.PPD"
+    RMDir  "$INSTDIR\installer"
     Delete "$INSTDIR\pdfmonitor.dll"
     RMDir  "$INSTDIR"
 
