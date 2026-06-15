@@ -74,4 +74,4 @@ HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR\Po
 |---|---|---|
 | `OutputPath` | Caminho completo do arquivo PDF de saída | `C:\PDF\saida.pdf` |
 | `GhostscriptPath` | Caminho do executável do Ghostscript | `C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe` |
-| Nome da subchave | Derivado do nome da impressora pelo instalador | `Meddrive Printer PORT Triton` |
+| Nome da subchave (porta) | Derivado do nome da impressora pelo instalador | `Meddrive Printer PORT Triton` |
