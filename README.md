@@ -4,8 +4,6 @@ Impressora virtual PDF para Windows que captura jobs de impressão e os converte
 
 Não exige interação do usuário após a instalação — basta instalar, definir o nome da impressora e o caminho de saída, e imprimir normalmente.
 
----
-
 ## Como funciona?
 
 São 3 arquivos source:
@@ -24,8 +22,6 @@ E todas as configurações (caminhos personalizados e do Ghostscript) são armaz
 
 O **Ghostscript** é um interpretador de PostScript e PDF. Nesse projeto, ele é chamado recebendo os parâmetros necessários para chamada da API (parâmetros definidos de acordo com a configuração — `OutputPath`, `PORT`, local da DLL e local do `.exe` do próprio Ghostscript).
 
----
-
 ## Fluxo completo de um job de impressão
 
 1. O Spooler carrega `meddrivemon.dll` e chama `InitializePrintMonitor2`, que preenche a estrutura `MONITOR2` (API do Windows) com todos os ponteiros de função e armazena a chave raiz do Registry em `g_hkRoot`.
@@ -42,16 +38,12 @@ O **Ghostscript** é um interpretador de PostScript e PDF. Nesse projeto, ele é
 
 7. É chamado o `Monitor_ClosePort` que libera a memória do `PORT_CONTEXT`.
 
----
-
 ## Pré-requisitos
 
 - Windows 10 ou 11 (x64)
 - Ghostscript instalado (testado com `gs10.07.1` — `gswin64c.exe`)
 - PowerShell com permissão para executar scripts
 - Execução como Administrador
-
----
 
 ## Instalação
 
@@ -61,8 +53,6 @@ O **Ghostscript** é um interpretador de PostScript e PDF. Nesse projeto, ele é
 > ```powershell
 > powershell -ExecutionPolicy Bypass -File .\install.ps1
 > ```
-
----
 
 ## Configuração
 
