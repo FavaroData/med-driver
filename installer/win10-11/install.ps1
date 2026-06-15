@@ -2,10 +2,11 @@
 
 # Parâmetros de saída
 param(
-    [string]$OutputPath      = "C:\Users\favaro\Desktop\PDF\saida.pdf",
-    [string]$GhostscriptPath = "C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe",
-    [string]$PrinterName     = "Meddrive Printer"
+    [string]$OutputPath  = "C:\Users\favaro\Desktop\PDF\saida.pdf",
+    [string]$PrinterName = "Meddrive Printer"
 )
+
+$GhostscriptPath = "$env:ProgramFiles\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 # Configurações para o script de instalação do monitor 
 $ErrorActionPreference = "Stop"

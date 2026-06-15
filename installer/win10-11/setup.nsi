@@ -1,6 +1,6 @@
 ; Meddrive Printer — instalador NSIS
 ; Requer: makensis (NSIS >= 3.0)
-; Gera:   MedPDFPrinter-Setup.exe
+; Gera:   MeddrivePrinter-Setup.exe
 
 Target amd64-unicode
 Unicode True
@@ -14,18 +14,16 @@ OutFile       "..\..\MeddrivePrinter-Setup.exe"
 InstallDir    "$TEMP\MedPDFPrinter"
 BrandingText  "Meddrive Printer"
 
-; solicita admin 
+; solicita admin
 RequestExecutionLevel admin
 
 ; ---------- variáveis ----------
 Var OutputFolder
-Var GhostscriptPath
 Var PrinterName
 
 ; ---------- páginas MUI ----------
 !define MUI_ABORTWARNING
 
-; substitui a página de diretório padrão por uma customizada
 Page custom PgOutputFolder PgOutputFolderLeave
 
 !insertmacro MUI_PAGE_INSTFILES
@@ -33,7 +31,7 @@ Page custom PgOutputFolder PgOutputFolderLeave
 
 !insertmacro MUI_LANGUAGE "PortugueseBR"
 
-; ---------- página: pasta de saída ----------
+; ---------- página: configuração ----------
 !include "nsDialogs.nsh"
 Var hDlg
 Var hPrinterLabel
@@ -89,70 +87,34 @@ Function PgOutputFolderLeave
     ${EndIf}
 FunctionEnd
 
-; ---------- detecção do Ghostscript ----------
-Function DetectGhostscript
-    StrCpy $GhostscriptPath ""
-
-    ; tenta versões comuns em ordem decrescente
-    !macro TryGS ver
-        ${If} $GhostscriptPath == ""
-            ${If} ${FileExists} "C:\Program Files\gs\gs${ver}\bin\gswin64c.exe"
-                StrCpy $GhostscriptPath "C:\Program Files\gs\gs${ver}\bin\gswin64c.exe"
-            ${EndIf}
-        ${EndIf}
-    !macroend
-
-    !insertmacro TryGS "10.07.1"
-    !insertmacro TryGS "10.07.0"
-    !insertmacro TryGS "10.06.0"
-    !insertmacro TryGS "10.05.1"
-    !insertmacro TryGS "10.05.0"
-    !insertmacro TryGS "10.04.0"
-    !insertmacro TryGS "10.03.1"
-    !insertmacro TryGS "10.03.0"
-    !insertmacro TryGS "10.02.1"
-    !insertmacro TryGS "10.02.0"
-    !insertmacro TryGS "10.01.2"
-    !insertmacro TryGS "10.01.1"
-    !insertmacro TryGS "10.01.0"
-    !insertmacro TryGS "10.00.0"
-    !insertmacro TryGS "9.56.1"
-    !insertmacro TryGS "9.56.0"
-    !insertmacro TryGS "9.55.0"
-    !insertmacro TryGS "9.54.0"
-    !insertmacro TryGS "9.53.3"
-    !insertmacro TryGS "9.52"
-    !insertmacro TryGS "9.50"
-
-    ${If} $GhostscriptPath == ""
-        MessageBox MB_OK|MB_ICONEXCLAMATION \
-            "Ghostscript nao foi encontrado em 'C:\Program Files\gs\'.$\n$\nBaixe e instale o Ghostscript antes de prosseguir:$\nhttps://www.ghostscript.com/releases/gsdnld.html"
-        Abort
-    ${EndIf}
-FunctionEnd
-
 ; ---------- instalação ----------
 Section "Instalar Meddrive Printer" SecInstall
 
-    Call DetectGhostscript
-
-    ; espelha estrutura do repositório: DLL na raiz, installer/ com os scripts
-    ; install.ps1 usa "$ScriptDir\..\meddrivemon.dll" para localizar a DLL
+    ; extrai DLL e scripts de instalação
     SetOutPath "$INSTDIR"
     File "..\..\meddrivemon.dll"
     SetOutPath "$INSTDIR\installer"
     File "MEDDRIVE.PPD"
     File "install.ps1"
 
-    ; monta o caminho completo do PDF de saída
+    ; extrai Ghostscript bundled para Program Files
+    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\bin"
+    File /r "..\..\gs\ghostscript\bin\*"
+    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\lib"
+    File /r "..\..\gs\ghostscript\lib\*"
+    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\Resource"
+    File /r "..\..\gs\ghostscript\Resource\*"
+    SetOutPath "$PROGRAMFILES64\Meddrive Printer\Ghostscript\iccprofiles"
+    File /r "..\..\gs\ghostscript\iccprofiles\*"
+
+    ; caminho fixo do Ghostscript bundled
     StrCpy $1 "$OutputFolder\saida.pdf"
 
-    ; executa o instalador PowerShell com os parâmetros configurados
     DetailPrint "Executando instalador PowerShell..."
-    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1" -OutputPath "$1" -GhostscriptPath "$GhostscriptPath" -PrinterName "$PrinterName"'
+    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1" -OutputPath "$1" -PrinterName "$PrinterName"'
     Pop $0
 
-    ; limpa temporários
+    ; limpa temporários do INSTDIR (Ghostscript permanece em Program Files)
     Delete "$INSTDIR\installer\install.ps1"
     Delete "$INSTDIR\installer\MEDDRIVE.PPD"
     RMDir  "$INSTDIR\installer"
@@ -170,6 +132,6 @@ Section "Instalar Meddrive Printer" SecInstall
     DetailPrint "Instalação concluída."
     DetailPrint "  Impressora : $PrinterName"
     DetailPrint "  Saída      : $1"
-    DetailPrint "  Ghostscript: $GhostscriptPath"
+    DetailPrint "  Ghostscript: $PROGRAMFILES64\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 SectionEnd
