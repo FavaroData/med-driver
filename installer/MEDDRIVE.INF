@@ -1,0 +1,37 @@
+[Version]
+Signature="$Windows NT$"
+Class=Printer
+ClassGUID={4D36E979-E325-11CE-BFC1-08002BE10318}
+Provider=%Mfg%
+DriverVer=06/14/2026,1.0.0.0
+CatalogFile=MEDDRIVE.cat
+
+[Manufacturer]
+%Mfg%=Meddrive,NTamd64
+
+[Meddrive.NTamd64]
+%PrinterName%=Meddrive_Driver,MEDDRIVE_PRINTER
+
+[Meddrive_Driver]
+CopyFiles=Meddrive_Files
+
+[Meddrive_Driver.HW]
+
+[Meddrive_Driver.Services]
+
+[Meddrive_Files]
+MEDDRIVE.PPD
+
+[DestinationDirs]
+Meddrive_Files=66000
+
+[SourceDisksNames]
+1=%DiskName%,,,"."
+
+[SourceDisksFiles]
+MEDDRIVE.PPD=1
+
+[Strings]
+Mfg="Meddrive"
+PrinterName="Meddrive Printer"
+DiskName="Meddrive Printer Driver Disk"

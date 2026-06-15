@@ -9,14 +9,14 @@ param(
 # Configurações para o script de instalação do monitor 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$DllSource = Join-Path $ScriptDir "..\pdfmonitor.dll"
-$DllDest   = "$env:SystemRoot\System32\pdfmonitor.dll"
+$DllSource = Join-Path $ScriptDir "..\meddrivemon.dll"
+$DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
 
 # Configurações do driver, monitor e porta
-$MonitorName = "MedMonitor"
-$PortName    = "MedPort"
-$PrinterName = "MedPrinter"
-$DriverName = "Med PDF Printer"
+$MonitorName = "Meddrive Printer MONITOR"
+$PortName    = "Meddrive Printer PORT"
+$PrinterName = "Meddrive Printer"
+$DriverName  = "Meddrive Printer DRIVER"
 
 # Regs 
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
@@ -38,7 +38,7 @@ Copy-Item $DllSource $DllDest -Force
 # Registrando o monitor e a porta no registry
 Write-Host "Registrando monitor no registry..."
 New-Item -Path $MonitorReg -Force | Out-Null
-Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "pdfmonitor.dll" -Type String
+Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
 
 Write-Host "Configurando porta..."
 New-Item -Path $PortReg -Force | Out-Null
@@ -114,14 +114,14 @@ if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
 # Copia o PPD e registra em Dependent Files ANTES de reiniciar o spooler —
 # PSCRIPT5 abandona o job silenciosamente sem PPD.
 Write-Host "Instalando PPD do driver..."
-$PpdSource = Join-Path $ScriptDir "MEDPDF.PPD"
-$PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDPDF.PPD"
+$PpdSource = Join-Path $ScriptDir "MEDDRIVE.PPD"
+$PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
 if (-not (Test-Path $PpdSource)) {
-    Write-Host "ERRO: MEDPDF.PPD nao encontrado em $PpdSource"
+    Write-Host "ERRO: MEDDRIVE.PPD nao encontrado em $PpdSource"
     exit 1
 }
 Copy-Item $PpdSource $PpdDest -Force
-Set-ItemProperty $driverKey -Name "Dependent Files" -Value @("MEDPDF.PPD", "") -Type MultiString
+Set-ItemProperty $driverKey -Name "Dependent Files" -Value @("MEDDRIVE.PPD", "") -Type MultiString
 Write-Host "  OK - PPD copiado e registrado em Dependent Files"
 
 # O spooler so enumera drivers injetados via registry no startup. Gravar as chaves
@@ -250,6 +250,6 @@ if ($success) {
 } else {
     Write-Host "ERRO: instalacao falhou ao registrar a impressora '$PrinterName'."
     Write-Host "  Motivo     : $erroMsg"
-    Write-Host "  Log da DLL : C:\Windows\Temp\pdfmonitor_init.log"
+    Write-Host "  Log da DLL : C:\Windows\Temp\meddrivemon_init.log"
     exit 1
 }

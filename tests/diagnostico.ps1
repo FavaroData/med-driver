@@ -1,10 +1,10 @@
 #Requires -RunAsAdministrator
 
-$DllPath     = "$env:SystemRoot\System32\pdfmonitor.dll"
-$MonitorName = "MedMonitor"
-$PortName    = "MedPort"
-$PrinterName = "MedPrinter"
-$DriverName = "Med PDF Printer"
+$DllPath     = "$env:SystemRoot\System32\meddrivemon.dll"
+$MonitorName = "Meddrive Printer MONITOR"
+$PortName    = "Meddrive Printer PORT"
+$PrinterName = "Meddrive Printer"
+$DriverName  = "Meddrive Printer DRIVER"
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 $PortReg     = "$MonitorReg\Ports\$PortName"
 
@@ -162,7 +162,7 @@ if (Test-Path $driverKey) {
     $attrsLabel = if ($attrs -eq 2) { "PRINTER_DRIVER_XPS — correto" } else { "ATENCAO: esperado 2" }
     Write-Host "  PrinterDriverAttributes = $attrs ($attrsLabel)"
     Write-Host "  Dependent Files         = $($dp.'Dependent Files' -join ', ')"
-    $ppdPath = "C:\Windows\System32\spool\drivers\x64\3\MEDPDF.PPD"
+    $ppdPath = "C:\Windows\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
     if (Test-Path $ppdPath) {
         $ppd = Get-Item $ppdPath
         Write-Host "  PPD: OK - $ppdPath ($([math]::Round($ppd.Length / 1024)) KB)"
@@ -287,7 +287,7 @@ public class DiagAddMon {
 $mon              = New-Object DiagAddMon+MONITOR_INFO_2
 $mon.pName        = $MonitorName
 $mon.pEnvironment = "Windows x64"
-$mon.pDLLName     = "pdfmonitor.dll"
+$mon.pDLLName     = "meddrivemon.dll"
 
 $result = [DiagAddMon]::AddMonitor($null, 2, [ref]$mon)
 $err    = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()

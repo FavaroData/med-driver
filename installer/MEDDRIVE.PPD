@@ -3,13 +3,13 @@
 *FileVersion: "1.0"
 *LanguageEncoding: ISOLatin1
 *LanguageVersion: Portuguese
-*PCFileName: "MEDPDF.PPD"
-*Product: "(Med PDF Printer)"
+*PCFileName: "MEDDRIVE.PPD"
+*Product: "(Meddrive Printer)"
 *PSVersion: "(3010.000) 0"
-*ModelName: "Med PDF Printer"
-*ShortNickName: "Med PDF Printer"
-*NickName: "Med PDF Printer"
-*Manufacturer: "Med"
+*ModelName: "Meddrive Printer"
+*ShortNickName: "Meddrive Printer"
+*NickName: "Meddrive Printer"
+*Manufacturer: "Meddrive"
 
 *% Capacidades do dispositivo
 *LanguageLevel: "3"

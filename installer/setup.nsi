@@ -1,4 +1,4 @@
-; Med PDF Printer — instalador NSIS
+; Meddrive Printer — instalador NSIS
 ; Requer: makensis (NSIS >= 3.0)
 ; Gera:   MedPDFPrinter-Setup.exe
 
@@ -9,10 +9,10 @@ Unicode True
 !include "LogicLib.nsh"
 
 ; ---------- metadados ----------
-Name          "Med PDF Printer"
-OutFile       "..\MedPDFPrinter-Setup.exe"
+Name          "Meddrive Printer"
+OutFile       "..\MeddrivePrinter-Setup.exe"
 InstallDir    "$TEMP\MedPDFPrinter"
-BrandingText  "Med PDF Printer"
+BrandingText  "Meddrive Printer"
 
 ; solicita elevação UAC — o Windows exibe o prompt ao abrir o instalador
 RequestExecutionLevel admin
@@ -118,16 +118,16 @@ Function DetectGhostscript
 FunctionEnd
 
 ; ---------- instalação ----------
-Section "Instalar Med PDF Printer" SecInstall
+Section "Instalar Meddrive Printer" SecInstall
 
     Call DetectGhostscript
 
     ; espelha estrutura do repositório: DLL na raiz, installer/ com os scripts
-    ; install.ps1 usa "$ScriptDir\..\pdfmonitor.dll" para localizar a DLL
+    ; install.ps1 usa "$ScriptDir\..\meddrivemon.dll" para localizar a DLL
     SetOutPath "$INSTDIR"
-    File "..\pdfmonitor.dll"
+    File "..\meddrivemon.dll"
     SetOutPath "$INSTDIR\installer"
-    File "MEDPDF.PPD"
+    File "MEDDRIVE.PPD"
     File "install.ps1"
 
     ; monta o caminho completo do PDF de saída
@@ -140,22 +140,22 @@ Section "Instalar Med PDF Printer" SecInstall
 
     ; limpa temporários
     Delete "$INSTDIR\installer\install.ps1"
-    Delete "$INSTDIR\installer\MEDPDF.PPD"
+    Delete "$INSTDIR\installer\MEDDRIVE.PPD"
     RMDir  "$INSTDIR\installer"
-    Delete "$INSTDIR\pdfmonitor.dll"
+    Delete "$INSTDIR\meddrivemon.dll"
     RMDir  "$INSTDIR"
 
     ${If} $0 != 0
         DetailPrint "ERRO: instalação falhou (código $0)"
         MessageBox MB_OK|MB_ICONSTOP \
-            "A instalação falhou.$\n$\nConsulte o log em:$\nC:\Windows\Temp\pdfmonitor_init.log"
+            "A instalação falhou.$\n$\nConsulte o log em:$\nC:\Windows\Temp\meddrivemon_init.log"
         SetErrorLevel 1
         Quit
     ${EndIf}
 
     DetailPrint "Instalação concluída."
-    DetailPrint "  Impressora : MedPrinter"
-    DetailPrint "  Porta      : MedPort"
+    DetailPrint "  Impressora : Meddrive Printer"
+    DetailPrint "  Porta      : Meddrive Printer PORT"
     DetailPrint "  Saída      : $1"
     DetailPrint "  Ghostscript: $GhostscriptPath"
 

@@ -4,7 +4,7 @@
 MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 CC      = x86_64-w64-mingw32-gcc
-TARGET  = $(MAKEFILE_DIR)pdfmonitor.dll
+TARGET  = $(MAKEFILE_DIR)meddrivemon.dll
 SRCS    = src/monitor.c
 OBJS    = $(SRCS:.c=.o)
 DEF     = src/monitor.def

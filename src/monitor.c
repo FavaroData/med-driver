@@ -11,7 +11,7 @@ static MONITOR2    g_monitor2 = {0};
 // abre, escreve e fecha o arquivo a cada chamada para garantir que nada se perca em caso de crash
 // temporária — será removida quando o problema de carregamento do monitor for resolvido
 static void LogDebug(const char *fmt, ...) {
-    HANDLE hLog = CreateFileW(L"C:\\Windows\\Temp\\pdfmonitor_init.log",
+    HANDLE hLog = CreateFileW(L"C:\\Windows\\Temp\\meddrivemon_init.log",
         FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hLog == INVALID_HANDLE_VALUE) return;
     char  buf[512];
@@ -302,7 +302,7 @@ static BOOL WINAPI Monitor_WritePort(
     if (!WriteFile(ctx->hTempFile, pBuffer, cbBuf, pcbWritten, NULL)) {
         DWORD err = GetLastError();
         WCHAR msg[128];
-        _snwprintf(msg, 128, L"[pdfmonitor] WriteFile falhou. Erro: %lu\n", err);
+        _snwprintf(msg, 128, L"[meddrivemon] WriteFile falhou. Erro: %lu\n", err);
         OutputDebugStringW(msg);
         return FALSE;
     }

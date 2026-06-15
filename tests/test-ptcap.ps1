@@ -14,7 +14,7 @@ public class PTCap3 {
 
 Write-Host "PTOpenProvider..."
 $h = [IntPtr]::Zero
-$hr1 = [PTCap3]::PTOpenProvider("MedPrinter", 1, [ref]$h)
+$hr1 = [PTCap3]::PTOpenProvider("Meddrive Printer", 1, [ref]$h)
 Write-Host "  hr=0x$($hr1.ToString('X8'))  h=$h"
 
 if ($h -ne [IntPtr]::Zero) {
