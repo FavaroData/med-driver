@@ -1,6 +1,7 @@
 # Meddrive Printer v1.2
+> Desenvolvido para a empresa **Stach IT**.
 
-Impressora virtual PDF para Windows que captura jobs de impressão e os converte automaticamente em arquivos PDF, salvando-os em uma pasta configurável, desenvolvido para a empresa **Stach IT**.
+Impressora virtual PDF para Windows que captura jobs de impressão e os converte automaticamente em arquivos PDF, salvando-os em uma pasta configurável.
 
 Não exige interação do usuário após a instalação — basta instalar, definir o nome da impressora e o caminho de saída, e imprimir normalmente.
 
