@@ -20,6 +20,7 @@ RequestExecutionLevel admin
 ; ---------- variáveis ----------
 Var OutputFolder
 Var GhostscriptPath
+Var PrinterName
 
 ; ---------- páginas MUI ----------
 !define MUI_ABORTWARNING
@@ -35,23 +36,31 @@ Page custom PgOutputFolder PgOutputFolderLeave
 ; ---------- página: pasta de saída ----------
 !include "nsDialogs.nsh"
 Var hDlg
+Var hPrinterLabel
+Var hPrinterText
 Var hLabel
 Var hFolderText
 Var hBrowse
 
 Function PgOutputFolder
-    !insertmacro MUI_HEADER_TEXT "Pasta de saída" "Onde os PDFs serão salvos"
+    !insertmacro MUI_HEADER_TEXT "Configuração" "Nome da impressora e pasta de destino dos PDFs"
 
     nsDialogs::Create 1018
     Pop $hDlg
 
-    ${NSD_CreateLabel} 0 10u 100% 12u "Pasta de destino dos arquivos PDF:"
+    ${NSD_CreateLabel} 0 0u 100% 12u "Nome da impressora:"
+    Pop $hPrinterLabel
+
+    ${NSD_CreateText} 0 14u 300u 14u "Meddrive Printer"
+    Pop $hPrinterText
+
+    ${NSD_CreateLabel} 0 36u 100% 12u "Pasta de destino dos arquivos PDF:"
     Pop $hLabel
 
-    ${NSD_CreateDirRequest} 0 28u 248u 14u "$DOCUMENTS\PDF"
+    ${NSD_CreateDirRequest} 0 52u 248u 14u "$DOCUMENTS\PDF"
     Pop $hFolderText
 
-    ${NSD_CreateBrowseButton} 252u 27u 48u 15u "Procurar..."
+    ${NSD_CreateBrowseButton} 252u 51u 48u 15u "Procurar..."
     Pop $hBrowse
     GetFunctionAddress $0 OnBrowseFolder
     nsDialogs::OnClick $hBrowse $0
@@ -68,6 +77,11 @@ Function OnBrowseFolder
 FunctionEnd
 
 Function PgOutputFolderLeave
+    ${NSD_GetText} $hPrinterText $PrinterName
+    ${If} $PrinterName == ""
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Informe o nome da impressora."
+        Abort
+    ${EndIf}
     ${NSD_GetText} $hFolderText $OutputFolder
     ${If} $OutputFolder == ""
         MessageBox MB_OK|MB_ICONEXCLAMATION "Selecione uma pasta de destino."
@@ -135,7 +149,7 @@ Section "Instalar Meddrive Printer" SecInstall
 
     ; executa o instalador PowerShell com os parâmetros configurados
     DetailPrint "Executando instalador PowerShell..."
-    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1" -OutputPath "$1" -GhostscriptPath "$GhostscriptPath"'
+    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1" -OutputPath "$1" -GhostscriptPath "$GhostscriptPath" -PrinterName "$PrinterName"'
     Pop $0
 
     ; limpa temporários
@@ -154,8 +168,7 @@ Section "Instalar Meddrive Printer" SecInstall
     ${EndIf}
 
     DetailPrint "Instalação concluída."
-    DetailPrint "  Impressora : Meddrive Printer"
-    DetailPrint "  Porta      : Meddrive Printer PORT"
+    DetailPrint "  Impressora : $PrinterName"
     DetailPrint "  Saída      : $1"
     DetailPrint "  Ghostscript: $GhostscriptPath"
 

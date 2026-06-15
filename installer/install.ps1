@@ -3,7 +3,8 @@
 # Parâmetros de saída
 param(
     [string]$OutputPath      = "C:\Users\favaro\Desktop\PDF\saida.pdf",
-    [string]$GhostscriptPath = "C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe"
+    [string]$GhostscriptPath = "C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe",
+    [string]$PrinterName     = "Meddrive Printer"
 )
 
 # Configurações para o script de instalação do monitor 
@@ -14,9 +15,11 @@ $DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
 
 # Configurações do driver, monitor e porta
 $MonitorName = "Meddrive Printer MONITOR"
-$PortName    = "Meddrive Printer PORT"
-$PrinterName = "Meddrive Printer"
 $DriverName  = "Meddrive Printer DRIVER"
+
+# deriva o sufixo da porta: remove "Meddrive Printer", "-" e todos os espaços
+$portSuffix = $PrinterName -replace 'Meddrive Printer', '' -replace '-', '' -replace '\s', ''
+$PortName   = if ($portSuffix) { "Meddrive Printer PORT $portSuffix" } else { "Meddrive Printer PORT" }
 
 # Regs 
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
@@ -37,7 +40,9 @@ Copy-Item $DllSource $DllDest -Force
 
 # Registrando o monitor e a porta no registry
 Write-Host "Registrando monitor no registry..."
-New-Item -Path $MonitorReg -Force | Out-Null
+if (-not (Test-Path $MonitorReg)) {
+    New-Item -Path $MonitorReg | Out-Null
+}
 Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
 
 Write-Host "Configurando porta..."

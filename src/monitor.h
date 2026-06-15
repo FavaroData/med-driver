@@ -8,7 +8,6 @@
 #include <winsplp.h>
 
 #define MONITOR_NAME  L"Meddrive Printer MONITOR"
-#define PORT_NAME     L"Meddrive Printer PORT"
 
 // variável persistente durante o uso da dll para guardar os dados do registry e do arquivo temporário para cada job de impressão
 typedef struct {

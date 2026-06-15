@@ -29,17 +29,19 @@ static void LogDebug(const char *fmt, ...) {
 // guarda em memória alocada em ctx
 // se ambos os caminhos forem lidos com sucesso retorna TRUE,
 // se nao encontrar retorna FALSE e cancela o job do spooler
-static BOOL ReadConfig(PORT_CONTEXT *ctx) {
+static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
 
     // parametros dentro do registry
     HKEY  hKey;
     DWORD size;
 
-    // log: registra qual chave do registry está sendo aberta
-    LogDebug("ReadConfig: abrindo Ports\\%ls\n", PORT_NAME);
+    // constrói o caminho da chave a partir do nome da porta recebida do spooler
+    WCHAR keyPath[512];
+    swprintf(keyPath, 512, L"Ports\\%ls", portName);
+    LogDebug("ReadConfig: abrindo %ls\n", keyPath);
 
     // lê as configurações do registry, se nao encontrar retorna false
-    LONG rc = RegOpenKeyExW(g_hkRoot, L"Ports\\" PORT_NAME, 0, KEY_READ, &hKey);
+    LONG rc = RegOpenKeyExW(g_hkRoot, keyPath, 0, KEY_READ, &hKey);
     LogDebug("ReadConfig: RegOpenKey resultado=%ld (%s)\n",
         rc, rc == ERROR_SUCCESS ? "SUCCESS" : "FALHOU");
     if (rc != ERROR_SUCCESS) return FALSE;
@@ -122,84 +124,100 @@ static BOOL WINAPI Monitor_EnumPorts(
     LPDWORD pcbNeeded,    // buffer para armazenar quantos bytes precisamos
     LPDWORD pcReturned)   // buffer para armazenar quantas portas retornamos
 {
-    // log: confirma se o Spooler chama EnumPorts após InitializePrintMonitor2
-    // se aparecer, o problema do AddMonitor (3007) está após EnumPorts
-    // se não aparecer, o Spooler rejeitou o MONITOR2 antes de chamar qualquer função
     LogDebug("EnumPorts: Level=%lu cbBuf=%lu\n", Level, cbBuf);
 
-    // constante com a descrição da porta, usada apenas no nível 2
     static const WCHAR PORT_DESC[] = L"Impressora Virtual PDF";
-    DWORD needed;
 
-    // se o nível pedido for diferente de 1 ou 2, retorna erro
     if (Level != 1 && Level != 2) {
         SetLastError(ERROR_INVALID_LEVEL);
         return FALSE;
     }
 
-    // calculo de quantos bytes necessários para retornar a lista de portas se for nivel 1 ou nivel 2
-    if (Level == 1)
-        needed = sizeof(PORT_INFO_1W) + (DWORD)((wcslen(PORT_NAME) + 1) * sizeof(WCHAR));
-    else
-        needed = sizeof(PORT_INFO_2W)
-               + (DWORD)((wcslen(PORT_NAME)    + 1) * sizeof(WCHAR))
-               + (DWORD)((wcslen(MONITOR_NAME) + 1) * sizeof(WCHAR))
-               + (DWORD)((wcslen(PORT_DESC)    + 1) * sizeof(WCHAR));
+    // abre a chave Ports\ para enumerar todas as portas registradas
+    HKEY hPortsKey;
+    LONG rc = RegOpenKeyExW(g_hkRoot, L"Ports", 0, KEY_READ, &hPortsKey);
+    if (rc != ERROR_SUCCESS) {
+        LogDebug("EnumPorts: chave Ports\\ nao encontrada rc=%ld\n", rc);
+        *pcbNeeded  = 0;
+        *pcReturned = 0;
+        return TRUE;
+    }
+
+    // primeira passagem: conta portas e calcula bytes necessários
+    DWORD portCount = 0;
+    DWORD needed    = 0;
+    DWORD idx       = 0;
+    WCHAR portName[256];
+    DWORD portNameLen;
+
+    for (;;) {
+        portNameLen = 256;
+        rc = RegEnumKeyExW(hPortsKey, idx, portName, &portNameLen, NULL, NULL, NULL, NULL);
+        if (rc == ERROR_NO_MORE_ITEMS) break;
+        if (rc != ERROR_SUCCESS) break;
+
+        DWORD nameBytes = (portNameLen + 1) * sizeof(WCHAR);
+        if (Level == 1)
+            needed += sizeof(PORT_INFO_1W) + nameBytes;
+        else
+            needed += sizeof(PORT_INFO_2W) + nameBytes
+                    + (DWORD)((wcslen(MONITOR_NAME) + 1) * sizeof(WCHAR))
+                    + (DWORD)((wcslen(PORT_DESC)    + 1) * sizeof(WCHAR));
+        portCount++;
+        idx++;
+    }
+
     *pcbNeeded  = needed;
     *pcReturned = 0;
 
-    // se o buffer fornecido for muito pequeno, retorna FALSE e quantos bytes seriam necessários
     if (cbBuf < needed) {
+        RegCloseKey(hPortsKey);
         LogDebug("EnumPorts: buffer insuficiente (needed=%lu cbBuf=%lu)\n", needed, cbBuf);
         SetLastError(ERROR_INSUFFICIENT_BUFFER);
         return FALSE;
     }
 
-    // preenche o buffer com as informações da porta, dependendo do nível
-    // apenas nome
-    if (Level == 1) {
-        PORT_INFO_1W *pInfo = (PORT_INFO_1W *)pPorts;
-        LPWSTR        strBuf = (LPWSTR)(pPorts + sizeof(PORT_INFO_1W));
-        wcscpy(strBuf, PORT_NAME);
-        pInfo->pName = strBuf;
-        LogDebug("EnumPorts L1 campos: pPorts=%p cbBuf=%lu sizeof(PORT_INFO_1W)=%lu\n"
-                 "  pName: offset=%lu addr=%p val='%ls'\n",
-            (void*)pPorts, cbBuf, (unsigned long)sizeof(PORT_INFO_1W),
-            (unsigned long)((LPBYTE)pInfo->pName - pPorts),
-            (void*)pInfo->pName, pInfo->pName);
-    // nome + descrição + monitor
-    } else {
-        PORT_INFO_2W *pInfo  = (PORT_INFO_2W *)pPorts;
-        LPWSTR        strBuf = (LPWSTR)(pPorts + sizeof(PORT_INFO_2W));
+    // segunda passagem: preenche o buffer
+    // structs ficam no início; strings ficam logo após o array de structs
+    DWORD   structSize = (Level == 1) ? sizeof(PORT_INFO_1W) : sizeof(PORT_INFO_2W);
+    LPBYTE  strArea    = pPorts + portCount * structSize;
+    DWORD   filled     = 0;
 
-        wcscpy(strBuf, PORT_NAME);
-        pInfo->pPortName = strBuf;
-        strBuf += wcslen(PORT_NAME) + 1;
+    for (idx = 0; filled < portCount; idx++) {
+        portNameLen = 256;
+        rc = RegEnumKeyExW(hPortsKey, idx, portName, &portNameLen, NULL, NULL, NULL, NULL);
+        if (rc != ERROR_SUCCESS) break;
 
-        wcscpy(strBuf, MONITOR_NAME);
-        pInfo->pMonitorName = strBuf;
-        strBuf += wcslen(MONITOR_NAME) + 1;
+        if (Level == 1) {
+            PORT_INFO_1W *pInfo = (PORT_INFO_1W *)(pPorts + filled * structSize);
+            pInfo->pName = (LPWSTR)strArea;
+            wcscpy((LPWSTR)strArea, portName);
+            strArea += (portNameLen + 1) * sizeof(WCHAR);
+        } else {
+            PORT_INFO_2W *pInfo = (PORT_INFO_2W *)(pPorts + filled * structSize);
 
-        wcscpy(strBuf, PORT_DESC);
-        pInfo->pDescription = strBuf;
+            pInfo->pPortName = (LPWSTR)strArea;
+            wcscpy((LPWSTR)strArea, portName);
+            strArea += (portNameLen + 1) * sizeof(WCHAR);
 
-        pInfo->fPortType = PORT_TYPE_WRITE;
-        pInfo->Reserved  = 0;
-        LogDebug("EnumPorts L2 campos: pPorts=%p cbBuf=%lu sizeof(PORT_INFO_2W)=%lu\n"
-                 "  pPortName:    offset=%lu addr=%p val='%ls'\n"
-                 "  pMonitorName: offset=%lu addr=%p val='%ls'\n"
-                 "  pDescription: offset=%lu addr=%p val='%ls'\n"
-                 "  fPortType=%lu Reserved=%lu\n",
-            (void*)pPorts, cbBuf, (unsigned long)sizeof(PORT_INFO_2W),
-            (unsigned long)((LPBYTE)pInfo->pPortName    - pPorts), (void*)pInfo->pPortName,    pInfo->pPortName,
-            (unsigned long)((LPBYTE)pInfo->pMonitorName - pPorts), (void*)pInfo->pMonitorName, pInfo->pMonitorName,
-            (unsigned long)((LPBYTE)pInfo->pDescription - pPorts), (void*)pInfo->pDescription, pInfo->pDescription,
-            (unsigned long)pInfo->fPortType, (unsigned long)pInfo->Reserved);
+            pInfo->pMonitorName = (LPWSTR)strArea;
+            wcscpy((LPWSTR)strArea, MONITOR_NAME);
+            strArea += (wcslen(MONITOR_NAME) + 1) * sizeof(WCHAR);
+
+            pInfo->pDescription = (LPWSTR)strArea;
+            wcscpy((LPWSTR)strArea, PORT_DESC);
+            strArea += (wcslen(PORT_DESC) + 1) * sizeof(WCHAR);
+
+            pInfo->fPortType = PORT_TYPE_WRITE;
+            pInfo->Reserved  = 0;
+        }
+        LogDebug("EnumPorts: porta[%lu]='%ls'\n", filled, portName);
+        filled++;
     }
 
-    // retorna TRUE se estiver tudo certo e que retornamos 1 porta
-    LogDebug("EnumPorts: retornando 1 porta (Level=%lu)\n", Level);
-    *pcReturned = 1;
+    RegCloseKey(hPortsKey);
+    LogDebug("EnumPorts: retornando %lu porta(s) (Level=%lu)\n", portCount, Level);
+    *pcReturned = portCount;
     return TRUE;
 }
 
@@ -231,7 +249,7 @@ static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHand
     // se não conseguir ler as configurações necessárias
     // libera a memória alocada
     // retorna FALSE e erro de falha ao abrir
-    if (!ReadConfig(ctx)) {
+    if (!ReadConfig(ctx, pName)) {
         HeapFree(GetProcessHeap(), 0, ctx);
         SetLastError(ERROR_OPEN_FAILED);
         return FALSE;
