@@ -260,6 +260,22 @@ C:\Windows\Temp\meddrivemon_init.log
 
 Contém todas as chamadas do spooler: `InitializePrintMonitor2`, `OpenPort`, `StartDocPort`, `WritePort`, `EndDocPort`.
 
+### Log do instalador PowerShell
+
+```
+C:\Windows\Temp\meddrive_ps_install.log
+```
+
+Gerado por `Start-Transcript` no início de `install.ps1` (Win7 e Win10/11). Captura toda a execução do script, incluindo os checkpoints de diagnóstico (`Trace-Step`) inseridos nos pontos-chave: início do script, resolução de caminhos, parada/cópia/registro do monitor e da DLL.
+
+Um `trap` global no início do script captura qualquer erro terminante não tratado e imprime, antes de sair com código 1:
+- `EXCEPTION TYPE` — tipo completo da excecão .NET
+- `EXCEPTION MSG` — mensagem da excecão
+- `LINE` — número da linha e o comando que falhou
+- `STACK` — stack trace do script
+
+Esse mecanismo foi adicionado porque `Write-Host` (usado nas mensagens normais de progresso) não é capturado quando o script é executado via `nsExec::ExecToLog` dentro do instalador NSIS — só `Write-Output` (usado por `Trace-Step` e pelo `trap`) é. Sem isso, falhas no instalador apareciam apenas como mensagens genéricas (ex.: "Acesso negado ao caminho.") sem indicar a causa ou a linha exata.
+
 ### Script de diagnóstico
 
 ```powershell

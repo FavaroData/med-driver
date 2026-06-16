@@ -6,12 +6,33 @@ param(
     [string]$PrinterName = "Meddrive Printer"
 )
 
+# trap captura qualquer erro terminante em qualquer ponto do script e imprime
+# tipo da excecao, mensagem e linha exata via Write-Output (capturado mesmo com
+# saida totalmente redirecionada, ao contrario de Write-Host).
+trap {
+    Write-Output "EXCEPTION TYPE: $($_.Exception.GetType().FullName)"
+    Write-Output "EXCEPTION MSG : $($_.Exception.Message)"
+    Write-Output "LINE          : $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())"
+    Write-Output "STACK         : $($_.ScriptStackTrace)"
+    exit 1
+}
+function Trace-Step($msg) { Write-Output "CHECKPOINT: $msg" }
+
+Trace-Step "inicio do script"
+
+Trace-Step "antes do Start-Transcript"
+Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_install.log" -Force
+Trace-Step "Start-Transcript OK"
+
 $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
-# Configurações para o script de instalação do monitor 
+# Configurações para o script de instalação do monitor
 $ErrorActionPreference = "Stop"
+Trace-Step "resolvendo ScriptDir a partir de $($MyInvocation.MyCommand.Path)"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+Trace-Step "ScriptDir resolvido: $ScriptDir"
 $DllSource = Join-Path $ScriptDir "..\meddrivemon.dll"
+Trace-Step "DllSource: $DllSource"
 $DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
 
 # Configurações do driver, monitor e porta
@@ -27,29 +48,37 @@ $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorNa
 $PortReg     = "$MonitorReg\Ports\$PortName"
 
 # Verificações
+Trace-Step "antes de Stop-Service Spooler"
 Write-Host "Parando o Spooler..."
 Stop-Service -Name Spooler -Force
 $p = Get-Process -Name spoolsv -ErrorAction SilentlyContinue
 if ($p) { $p.WaitForExit() }
+Trace-Step "Spooler parado"
 
 Write-Host "Copiando DLL para System32..."
 if (-not (Test-Path $DllSource)) {
     Write-Host "ERRO: DLL não encontrada em $DllSource"
     exit 1
 }
+Trace-Step "copiando $DllSource para $DllDest"
 Copy-Item $DllSource $DllDest -Force
+Trace-Step "DLL copiada"
 
 # Registrando o monitor e a porta no registry
 Write-Host "Registrando monitor no registry..."
+Trace-Step "registrando monitor em $MonitorReg"
 if (-not (Test-Path $MonitorReg)) {
     New-Item -Path $MonitorReg | Out-Null
 }
 Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
+Trace-Step "monitor registrado"
 
 Write-Host "Configurando porta..."
+Trace-Step "registrando porta em $PortReg"
 New-Item -Path $PortReg -Force | Out-Null
 Set-ItemProperty -Path $PortReg -Name "OutputPath"      -Value $OutputPath      -Type String
 Set-ItemProperty -Path $PortReg -Name "GhostscriptPath" -Value $GhostscriptPath -Type String
+Trace-Step "porta configurada"
 
 # Garante que a pasta de destino existe, se não, cria a pasta
 $outputDir = Split-Path -Parent $OutputPath

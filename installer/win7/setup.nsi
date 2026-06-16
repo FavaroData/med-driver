@@ -86,6 +86,12 @@ Function PgOutputFolderLeave
     ${EndIf}
 FunctionEnd
 
+; ---------- macro: copia DLL para System32 se ausente ----------
+!macro InstallDllIfMissing DLL_NAME
+    IfFileExists "$WINDIR\System32\${DLL_NAME}" +2
+        CopyFiles /SILENT "$INSTDIR\DLL\${DLL_NAME}" "$WINDIR\System32\"
+!macroend
+
 ; ---------- instalação ----------
 Section "Instalar Meddrive Printer" SecInstall
 
@@ -108,6 +114,41 @@ Section "Instalar Meddrive Printer" SecInstall
     File /r "..\..\gs\ghostscript-win7\Resource\*"
     SetOutPath "$R0\Meddrive Printer\Ghostscript\iccprofiles"
     File /r "..\..\gs\ghostscript-win7\iccprofiles\*"
+
+    ; instala DLLs de runtime ausentes no Win7 (VC++ Runtime + Universal CRT)
+    DetailPrint "Verificando DLLs de runtime para Win7..."
+    SetOutPath "$INSTDIR\DLL"
+    File "DLL\vcruntime140.dll"
+    File "DLL\vcruntime140_1.dll"
+    File "DLL\ucrtbase.dll"
+    File "DLL\api-ms-win-crt-convert-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-environment-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-filesystem-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-heap-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-locale-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-math-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-runtime-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-stdio-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-string-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-time-l1-1-0.dll"
+    File "DLL\api-ms-win-crt-utility-l1-1-0.dll"
+
+    !insertmacro InstallDllIfMissing "vcruntime140.dll"
+    !insertmacro InstallDllIfMissing "vcruntime140_1.dll"
+    !insertmacro InstallDllIfMissing "ucrtbase.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-convert-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-environment-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-filesystem-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-heap-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-locale-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-math-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-runtime-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-stdio-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-string-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-time-l1-1-0.dll"
+    !insertmacro InstallDllIfMissing "api-ms-win-crt-utility-l1-1-0.dll"
+
+    RMDir /r "$INSTDIR\DLL"
 
     StrCpy $1 "$OutputFolder\saida.pdf"
 

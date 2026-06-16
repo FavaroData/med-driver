@@ -5,16 +5,46 @@ param(
     [string]$PrinterName = "Meddrive Printer"
 )
 
+# trap captura qualquer erro terminante em qualquer ponto do script e imprime
+# tipo da excecao, mensagem e linha exata via Write-Output (capturado mesmo com
+# saida totalmente redirecionada, ao contrario de Write-Host).
+trap {
+    Write-Output "EXCEPTION TYPE: $($_.Exception.GetType().FullName)"
+    Write-Output "EXCEPTION MSG : $($_.Exception.Message)"
+    Write-Output "LINE          : $($_.InvocationInfo.ScriptLineNumber): $($_.InvocationInfo.Line.Trim())"
+    Write-Output "STACK         : $($_.ScriptStackTrace)"
+    exit 1
+}
+function Trace-Step($msg) { Write-Output "CHECKPOINT: $msg" }
+
+Trace-Step "inicio do script"
+
+# O nsExec do NSIS nao garante heranca do token elevado do instalador para o
+# processo powershell.exe filho — forca elevacao explicita aqui.
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Trace-Step "processo nao elevado, relancando via RunAs"
+    $scriptPath = $MyInvocation.MyCommand.Path
+    $arguments  = "-ExecutionPolicy Bypass -File `"$scriptPath`" -OutputPath `"$OutputPath`" -PrinterName `"$PrinterName`""
+    Start-Process powershell -Verb RunAs -ArgumentList $arguments -Wait
+    exit $LASTEXITCODE
+}
+Trace-Step "processo ja elevado (IsInRole Administrator = true)"
+
+Trace-Step "antes do Start-Transcript"
 Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_install.log" -Force
+Trace-Step "Start-Transcript OK"
 
 $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 $ErrorActionPreference = "Stop"
+Trace-Step "resolvendo ScriptDir a partir de $($MyInvocation.MyCommand.Path)"
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
+Trace-Step "ScriptDir resolvido: $ScriptDir"
 $DllSource = Join-Path $ScriptDir "..\meddrivemon.dll"
 if (-not (Test-Path $DllSource)) {
     $DllSource = Join-Path $ScriptDir "..\..\meddrivemon.dll"
 }
+Trace-Step "DllSource: $DllSource"
 $DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
 
 $MonitorName = "Meddrive Printer MONITOR"
@@ -92,28 +122,36 @@ public class Win32Print {
 }
 "@ -ErrorAction SilentlyContinue
 
+Trace-Step "antes de Stop-Service Spooler"
 Write-Host "Parando o Spooler..."
 Stop-Service -Name Spooler -Force
 $p = Get-Process -Name spoolsv -ErrorAction SilentlyContinue
 if ($p) { $p.WaitForExit() }
+Trace-Step "Spooler parado"
 
 Write-Host "Copiando DLL para System32..."
 if (-not (Test-Path $DllSource)) {
     Write-Host "ERRO: DLL nao encontrada em $DllSource"
     exit 1
 }
+Trace-Step "copiando $DllSource para $DllDest"
 Copy-Item $DllSource $DllDest -Force
+Trace-Step "DLL copiada"
 
 Write-Host "Registrando monitor no registry..."
+Trace-Step "registrando monitor em $MonitorReg"
 if (-not (Test-Path $MonitorReg)) {
     New-Item -Path $MonitorReg | Out-Null
 }
 Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
+Trace-Step "monitor registrado"
 
 Write-Host "Configurando porta..."
+Trace-Step "registrando porta em $PortReg"
 New-Item -Path $PortReg -Force | Out-Null
 Set-ItemProperty -Path $PortReg -Name "OutputPath"      -Value $OutputPath      -Type String
 Set-ItemProperty -Path $PortReg -Name "GhostscriptPath" -Value $GhostscriptPath -Type String
+Trace-Step "porta configurada"
 
 $outputDir = Split-Path -Parent $OutputPath
 if (-not (Test-Path $outputDir)) {
@@ -226,13 +264,13 @@ if (-not $portOk) {
     Write-Host "  OK - porta registrada via AddPortExW"
 }
 
-# Remove impressora existente com mesmo nome via OpenPrinter + DeletePrinter
-# Substitui Remove-Printer que nao existe no Windows 7 sem PrintManagement
+# Verifica se a impressora ja existe — cancela em vez de sobrescrever, pois
+# DeletePrinter+AddPrinter falhava ao tentar recriar a impressora.
 $hExisting = [IntPtr]::Zero
 if ([Win32Print]::OpenPrinter($PrinterName, [ref]$hExisting, [IntPtr]::Zero)) {
-    [Win32Print]::DeletePrinter($hExisting) | Out-Null
     [Win32Print]::ClosePrinter($hExisting) | Out-Null
-    Write-Host "  Impressora '$PrinterName' removida para reinstalacao"
+    Write-Host "ERRO: impressora '$PrinterName' ja existe. Remova-a manualmente antes de reinstalar."
+    exit 1
 }
 
 $pi2                 = New-Object Win32Print+PRINTER_INFO_2
