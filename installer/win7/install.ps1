@@ -5,6 +5,8 @@ param(
     [string]$PrinterName = "Meddrive Printer"
 )
 
+Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_install.log" -Force
+
 $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 $ErrorActionPreference = "Stop"
@@ -70,6 +72,23 @@ public class Win32Print {
     public static extern bool ClosePrinter(IntPtr hPrinter);
     [DllImport("winspool.drv", SetLastError=true)]
     public static extern bool DeletePrinter(IntPtr hPrinter);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DRIVER_INFO_1 {
+        public IntPtr pName;
+    }
+    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool EnumPrinterDrivers(string pName, string pEnvironment, uint Level, IntPtr pDriverInfo, uint cbBuf, ref uint pcbNeeded, ref uint pcReturned);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct DRIVER_INFO_2 {
+        public uint   cVersion;
+        public string pName;
+        public string pEnvironment;
+        public string pDriverPath;
+        public string pDataFile;
+        public string pConfigFile;
+    }
+    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool AddPrinterDriverEx(string pName, uint Level, ref DRIVER_INFO_2 pDriverInfo, uint dwFileCopyFlags);
 }
 "@ -ErrorAction SilentlyContinue
 
@@ -120,21 +139,40 @@ if (-not (Test-Path $PortReg)) {
 }
 Write-Host "  OK - Spooler em execucao, monitor e porta no registry"
 
-Write-Host "Instalando driver PSCRIPT5 customizado..."
-if (-not (Test-Path $DriverKey)) {
-    New-Item -Path $DriverKey -Force | Out-Null
-    Set-ItemProperty $DriverKey -Name "Configuration File"      -Value "PS5UI.DLL"
-    Set-ItemProperty $DriverKey -Name "Data File"               -Value "PSCRIPT.NTF"
-    Set-ItemProperty $DriverKey -Name "Driver"                  -Value "PSCRIPT5.DLL"
-    Set-ItemProperty $DriverKey -Name "Help File"               -Value "PSCRIPT.HLP"
-    Set-ItemProperty $DriverKey -Name "Driver Version"          -Value 3 -Type DWord
-    Set-ItemProperty $DriverKey -Name "Version"                 -Value 3 -Type DWord
-    # PRINTER_DRIVER_XPS (0x2) — habilita o Print Ticket Provider do PSCRIPT5.
-    Set-ItemProperty $DriverKey -Name "PrinterDriverAttributes" -Value 2 -Type DWord
-    Write-Host "  OK - driver '$DriverName' registrado via registry"
-} else {
-    Write-Host "  OK - driver '$DriverName' ja instalado"
+Write-Host "Instalando driver PSCRIPT5 customizado via AddPrinterDriverEx..."
+# No Win7, PSCRIPT5.DLL nao esta em spool\drivers\x64\3\ a menos que uma impressora PS
+# ja tenha sido instalada antes. Os arquivos ficam no DriverStore com hash dinamico no caminho.
+# Detectamos o diretorio em runtime para nao depender de um caminho fixo.
+$ps5 = Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" `
+    -Recurse -Filter "PSCRIPT5.DLL" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $ps5) {
+    Write-Host "ERRO: PSCRIPT5.DLL nao encontrado no DriverStore"
+    exit 1
 }
+$driverDir = $ps5.DirectoryName
+Write-Host "  DriverStore: $driverDir"
+
+# AddPrinterDriverEx registra o driver pelo canal oficial do spooler (equivalente a
+# Add-PrinterDriver do Win10). O flag 20 = APD_COPY_ALL_FILES | APD_COPY_FROM_DIRECTORY
+# instrui o spooler a copiar os arquivos do DriverStore para spool\drivers\x64\3\.
+# Usar so o registry (abordagem anterior) fazia o spooler enumerar o driver mas nao
+# conseguia carrega-lo no AddPrinter, resultando em Win32 erro 6 (ERROR_INVALID_HANDLE).
+$di2              = New-Object Win32Print+DRIVER_INFO_2
+$di2.cVersion     = 3
+$di2.pName        = $DriverName
+$di2.pEnvironment = "Windows x64"
+$di2.pDriverPath  = "$driverDir\PSCRIPT5.DLL"
+$di2.pDataFile    = "$driverDir\PSCRIPT.NTF"
+$di2.pConfigFile  = "$driverDir\PS5UI.DLL"
+$drvOk = [Win32Print]::AddPrinterDriverEx($null, 2, [ref]$di2, 20)
+if (-not $drvOk) {
+    $drvErr = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    Write-Host "ERRO: AddPrinterDriverEx falhou (Win32 erro $drvErr)"
+    exit 1
+}
+# PRINTER_DRIVER_XPS (0x2) — habilita o Print Ticket Provider do PSCRIPT5
+Set-ItemProperty $DriverKey -Name "PrinterDriverAttributes" -Value 2 -Type DWord
+Write-Host "  OK - driver '$DriverName' registrado via AddPrinterDriverEx"
 
 Write-Host "Instalando PPD do driver..."
 $PpdSource = Join-Path $ScriptDir "MEDDRIVE.PPD"
@@ -151,12 +189,31 @@ Write-Host "Reiniciando o Spooler para enumerar o driver..."
 Restart-Service -Name Spooler -Force
 Start-Sleep -Seconds 3
 
-# Verifica driver via registry (sem Get-PrinterDriver que exige PrintManagement)
-if (-not (Test-Path $DriverKey)) {
-    Write-Host "ERRO: chave do driver nao encontrada no registry apos reinicio"
+# Verifica se o spooler enumerou o driver — equivalente a Get-PrinterDriver no Win10,
+# sem depender do modulo PrintManagement ausente no Win7.
+$needed   = [uint32]0
+$returned = [uint32]0
+[Win32Print]::EnumPrinterDrivers($null, "Windows x64", 1, [IntPtr]::Zero, 0, [ref]$needed, [ref]$returned) | Out-Null
+$buf = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([int]$needed)
+$driverFound = $false
+try {
+    if ([Win32Print]::EnumPrinterDrivers($null, "Windows x64", 1, $buf, $needed, [ref]$needed, [ref]$returned)) {
+        $sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32Print+DRIVER_INFO_1])
+        for ($i = 0; $i -lt [int]$returned; $i++) {
+            $ptr  = [IntPtr]($buf.ToInt64() + $i * $sz)
+            $info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($ptr, [type][Win32Print+DRIVER_INFO_1])
+            $name = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($info.pName)
+            if ($name -eq $DriverName) { $driverFound = $true; break }
+        }
+    }
+} finally {
+    [System.Runtime.InteropServices.Marshal]::FreeHGlobal($buf)
+}
+if (-not $driverFound) {
+    Write-Host "ERRO: driver '$DriverName' nao reconhecido pelo spooler apos reinicio"
     exit 1
 }
-Write-Host "  OK - driver '$DriverName' reconhecido no registry"
+Write-Host "  OK - driver '$DriverName' reconhecido pelo spooler"
 
 Write-Host "Registrando porta via AddPortExW..."
 $pi1       = New-Object Win32Print+PORT_INFO_1

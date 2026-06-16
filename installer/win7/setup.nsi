@@ -101,13 +101,13 @@ Section "Instalar Meddrive Printer" SecInstall
 
     ; extrai Ghostscript bundled para ProgramData
     SetOutPath "$R0\Meddrive Printer\Ghostscript\bin"
-    File /r "..\..\gs\ghostscript\bin\*"
+    File /r "..\..\gs\ghostscript-win7\bin\*"
     SetOutPath "$R0\Meddrive Printer\Ghostscript\lib"
-    File /r "..\..\gs\ghostscript\lib\*"
+    File /r "..\..\gs\ghostscript-win7\lib\*"
     SetOutPath "$R0\Meddrive Printer\Ghostscript\Resource"
-    File /r "..\..\gs\ghostscript\Resource\*"
+    File /r "..\..\gs\ghostscript-win7\Resource\*"
     SetOutPath "$R0\Meddrive Printer\Ghostscript\iccprofiles"
-    File /r "..\..\gs\ghostscript\iccprofiles\*"
+    File /r "..\..\gs\ghostscript-win7\iccprofiles\*"
 
     StrCpy $1 "$OutputFolder\saida.pdf"
 
