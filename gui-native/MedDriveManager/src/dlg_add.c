@@ -86,8 +86,8 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             GetDlgItemTextW(hwnd, IDC_EDIT_PORT, s_entry->portName,   PRINTER_PORT_MAX);
             GetDlgItemTextW(hwnd, IDC_EDIT_PATH, s_entry->outputPath, PRINTER_PATH_MAX);
             if (s_entry->name[0] == L'\0') {
-                MessageBoxW(hwnd, L"O nome da impressora nao pode estar vazio.",
-                            L"Campo obrigatorio", MB_ICONWARNING | MB_OK);
+                MessageBoxW(hwnd, L"O nome da impressora não pode estar vazio.",
+                            L"Campo obrigatório", MB_ICONWARNING | MB_OK);
                 SetFocus(GetDlgItem(hwnd, IDC_EDIT_NAME));
                 return TRUE;
             }

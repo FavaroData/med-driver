@@ -1,19 +1,14 @@
 #Requires -RunAsAdministrator
 
-# Adiciona uma nova impressora Meddrive Printer numa maquina onde o monitor e a
-# DLL ja foram instalados (via install.ps1). Mesma logica de install.ps1, exceto
-# pela copia/transferencia de meddrivemon.dll para System32 — chamado pela
-# interface de gerenciamento de impressoras.
+# Adiciona uma nova impressora Meddrive numa máquina onde install.ps1 já rodou
+# (DLL em System32, monitor e driver registrados). Responsável apenas pela
+# criação da instância de impressora: porta, AddPortExW e AddPrinterW.
 
-# Parâmetros de saída
 param(
     [string]$OutputPath  = "C:\Users\favaro\Desktop\PDF\saida.pdf",
     [string]$PrinterName = "Meddrive Printer"
 )
 
-# captura qualquer erro terminante em qualquer ponto do script e imprime
-# tipo da excecao, mensagem e linha exata via Write-Output (capturado mesmo com
-# saida totalmente redirecionada, ao contrario de Write-Host).
 trap {
     Write-Output "EXCEPTION TYPE: $($_.Exception.GetType().FullName)"
     Write-Output "EXCEPTION MSG : $($_.Exception.Message)"
@@ -24,47 +19,40 @@ trap {
 function Trace-Step($msg) { Write-Output "CHECKPOINT: $msg" }
 
 Trace-Step "inicio do script"
-
-Trace-Step "antes do Start-Transcript"
 Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_addprinter.log" -Force
 Trace-Step "Start-Transcript OK"
 
 $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
-
-# Configurações para o script de instalação do monitor
 $ErrorActionPreference = "Stop"
-Trace-Step "resolvendo ScriptDir a partir de $($MyInvocation.MyCommand.Path)"
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Trace-Step "ScriptDir resolvido: $ScriptDir"
 
-# Este script nao instala a DLL — pressupoe que install.ps1 ja rodou antes.
+# ── Pré-requisitos (devem ter sido instalados pelo install.ps1) ───────────
 $DllPath = "$env:SystemRoot\System32\meddrivemon.dll"
 if (-not (Test-Path $DllPath)) {
-    Write-Host "ERRO: meddrivemon.dll nao encontrada em $DllPath. Execute o instalador principal antes de adicionar impressoras."
+    Write-Host "ERRO: meddrivemon.dll não encontrada em $DllPath. Execute o instalador principal antes de adicionar impressoras."
     exit 1
 }
 Trace-Step "DLL encontrada em $DllPath"
 
-# Configurações do driver, monitor e porta
 $MonitorName = "Meddrive Printer MONITOR"
 $DriverName  = "Meddrive Printer DRIVER"
+$MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 
-# determina o nome com o sufixo da porta: remove "Meddrive Printer" (Nome da Impressora Padronizado), "-" e todos os espaços
+if (-not (Test-Path $MonitorReg)) {
+    Write-Host "ERRO: monitor '$MonitorName' não encontrado no registry. Execute o instalador principal antes de adicionar impressoras."
+    exit 1
+}
+Trace-Step "monitor encontrado no registry"
+
+if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
+    Write-Host "ERRO: driver '$DriverName' não encontrado. Execute o instalador principal antes de adicionar impressoras."
+    exit 1
+}
+Trace-Step "driver encontrado"
+
+# ── Configuração da porta ─────────────────────────────────────────────────
 $portSuffix = $PrinterName -replace 'Meddrive Printer', '' -replace '-', '' -replace '\s', ''
 $PortName   = if ($portSuffix) { "Meddrive Printer PORT $portSuffix" } else { "Meddrive Printer PORT" }
-
-# Caminho do registry para o monitor e a porta
-$MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
-$PortReg     = "$MonitorReg\Ports\$PortName"
-
-# Registrando o monitor e a porta no registry
-Write-Host "Registrando monitor no registry..."
-Trace-Step "registrando monitor em $MonitorReg"
-if (-not (Test-Path $MonitorReg)) {
-    New-Item -Path $MonitorReg | Out-Null
-}
-Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
-Trace-Step "monitor registrado"
+$PortReg    = "$MonitorReg\Ports\$PortName"
 
 Write-Host "Configurando porta..."
 Trace-Step "registrando porta em $PortReg"
@@ -73,99 +61,31 @@ Set-ItemProperty -Path $PortReg -Name "OutputPath"      -Value $OutputPath      
 Set-ItemProperty -Path $PortReg -Name "GhostscriptPath" -Value $GhostscriptPath -Type String
 Trace-Step "porta configurada"
 
-# Garante que a pasta de destino existe, se não, cria a pasta
+# Garante que a pasta de destino existe
 $outputDir = Split-Path -Parent $OutputPath
 if (-not (Test-Path $outputDir)) {
     New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 }
 
-# Instalação do driver e impressora virtual
+# ── Spooler ───────────────────────────────────────────────────────────────
 Write-Host "Iniciando o Spooler..."
 Start-Service -Name Spooler
 
 Write-Host "Aguardando o Spooler carregar o monitor..."
 Start-Sleep -Seconds 5
 
-# Verificação do registry + status do servico como pre-condicao minima para prosseguir,
-# POsteriormente o AddPrinterW fará a validacao final da porta.
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
-    Write-Host "ERRO: Spooler nao esta em execucao (status: $spoolerStatus)"
-    exit 1
-}
-if (-not (Test-Path $MonitorReg)) {
-    Write-Host "ERRO: monitor nao encontrado no registry ($MonitorReg)"
+    Write-Host "ERRO: Spooler não está em execução (status: $spoolerStatus)"
     exit 1
 }
 if (-not (Test-Path $PortReg)) {
-    Write-Host "ERRO: porta nao encontrada no registry ($PortReg)"
+    Write-Host "ERRO: porta não encontrada no registry ($PortReg)"
     exit 1
 }
-Write-Host "  OK - Spooler em execucao, monitor e porta no registry"
+Write-Host "  OK - Spooler em execução, porta no registry"
 
-# Verificação do driver 'Generic / Text Only' está presente — driver built-in do Windows usado como base.
-Write-Host "Verificando driver 'Generic / Text Only'..."
-if (-not (Get-PrinterDriver -Name "Generic / Text Only" -ErrorAction SilentlyContinue)) {
-    Write-Host "  Instalando 'Generic / Text Only'..."
-    Add-PrinterDriver -Name "Generic / Text Only" -ErrorAction Stop
-    Write-Host "  OK - instalado"
-} else {
-    Write-Host "  OK - ja presente"
-}
-
-# Instalação do driver PSCRIPT5 via registry — sem INF próprio e sem assinatura digital.
-# Não usa drivers inbox (PS Class Driver, Print To PDF) pois o Windows 10/11 bloqueia
-# drivers inbox com port monitors de terceiros (erro ID=242 no PrintService).
-# PSCRIPT5 já está instalado e assinado pela Microsoft em System32\spool\drivers\x64\3\.
-# Registramos um driver customizado apontando para os arquivos existentes do PSCRIPT5
-# diretamente no registry do spooler — método que não exige assinatura adicional.
-Write-Host "Instalando driver PSCRIPT5 customizado..."
-$driverKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3\$DriverName"
-if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
-    New-Item -Path $driverKey -Force | Out-Null
-    Set-ItemProperty $driverKey -Name "Configuration File"      -Value "PS5UI.DLL"
-    Set-ItemProperty $driverKey -Name "Data File"               -Value "PSCRIPT.NTF"
-    Set-ItemProperty $driverKey -Name "Driver"                  -Value "PSCRIPT5.DLL"
-    Set-ItemProperty $driverKey -Name "Help File"               -Value "PSCRIPT.HLP"
-    Set-ItemProperty $driverKey -Name "Driver Version"          -Value 3 -Type DWord
-    Set-ItemProperty $driverKey -Name "Version"                 -Value 3 -Type DWord
-    # PRINTER_DRIVER_XPS (0x2) — habilita o Print Ticket Provider do PSCRIPT5.
-    # Sem esse flag PTGetPrintCapabilities retorna E_FAIL e o Edge nao carrega o preview.
-    Set-ItemProperty $driverKey -Name "PrinterDriverAttributes" -Value 2 -Type DWord
-    Write-Host "  OK - driver '$DriverName' registrado via registry"
-} else {
-    Write-Host "  OK - driver '$DriverName' ja instalado"
-}
-
-# Copia o PPD e registra em Dependent Files ANTES de reiniciar o spooler —
-# PSCRIPT5 abandona o job sem PPD registrado, mesmo que o driver esteja presente no registry.
-Write-Host "Instalando PPD do driver..."
-$PpdSource = Join-Path $ScriptDir "MEDDRIVE.PPD"
-$PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
-if (-not (Test-Path $PpdSource)) {
-    Write-Host "ERRO: MEDDRIVE.PPD nao encontrado em $PpdSource"
-    exit 1
-}
-Copy-Item $PpdSource $PpdDest -Force
-Set-ItemProperty $driverKey -Name "Dependent Files" -Value @("MEDDRIVE.PPD", "") -Type MultiString
-Write-Host "  OK - PPD copiado e registrado em Dependent Files"
-
-# O spooler só enumera drivers injetados via registry no startup.
-# Gravar as chaves com ele em execucao nao basta — e preciso reiniciar para que ele leia a chave do
-# driver (com o PPD ja no lugar) e o reconheça.
-Write-Host "Reiniciando o Spooler para enumerar o driver..."
-Restart-Service -Name Spooler -Force
-Start-Sleep -Seconds 3
-if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
-    Write-Host "ERRO: driver '$DriverName' nao reconhecido pelo spooler apos registro"
-    exit 1
-}
-Write-Host "  OK - driver '$DriverName' reconhecido pelo spooler"
-
-# Registra a porta no spooler via AddPortExW antes de chamar AddPrinterW.
-# AddPrinterW valida a porta chamando EnumPorts, que retorna ERROR_INVALID_DATA (13)
-# para monitores customizados devido a falha de ponteiro no merge RPC.
-# AddPortExW usa caminho diferente no spooler (chama pfnAddPortEx no monitor) e contorna o problema.
+# ── Registra a porta via AddPortExW ──────────────────────────────────────
 Add-Type -TypeDefinition "
 using System;
 using System.Runtime.InteropServices;
@@ -190,9 +110,7 @@ if (-not $portOk) {
     Write-Host "  OK - porta registrada via AddPortExW"
 }
 
-# P/Invoke direto ao AddPrinterW — bypassa CIM/WMI e expoe o codigo Win32 exato.
-# Add-Printer usava o caminho CIM que retornava so a string localizada do erro,
-# impedindo diagnostico. Aqui controlamos todos os campos de PRINTER_INFO_2W.
+# ── Registra a impressora via AddPrinterW ─────────────────────────────────
 Add-Type -TypeDefinition "
 using System;
 using System.Runtime.InteropServices;
@@ -233,8 +151,8 @@ $pi2.pPrinterName    = $PrinterName
 $pi2.pPortName       = $PortName
 $pi2.pDriverName     = $DriverName
 $pi2.pPrintProcessor = "winprint"
-$pi2.pDatatype       = "RAW"    # PSCRIPT5 entrega PS como RAW ao port monitor
-$pi2.Attributes      = 0x40  # PRINTER_ATTRIBUTE_LOCAL = 64
+$pi2.pDatatype       = "RAW"
+$pi2.Attributes      = 0x40  # PRINTER_ATTRIBUTE_LOCAL
 
 Write-Host "Registrando impressora via AddPrinterW..."
 Write-Host "  pPrinterName   : $($pi2.pPrinterName)"
@@ -265,16 +183,15 @@ while ($attempt -lt $maxAttempts -and -not $success) {
     }
 }
 
-# Saída final: só exibe sucesso se todos os passos anteriores deram certo
 Write-Host ""
 if ($success) {
-    Write-Host "Instalacao concluida!"
+    Write-Host "Instalação concluída!"
     Write-Host "  Impressora : $PrinterName"
     Write-Host "  Porta      : $PortName"
-    Write-Host "  Saida      : $OutputPath"
+    Write-Host "  Saída      : $OutputPath"
     Write-Host "  Ghostscript: $GhostscriptPath"
 } else {
-    Write-Host "ERRO: instalacao falhou ao registrar a impressora '$PrinterName'."
+    Write-Host "ERRO: falha ao registrar a impressora '$PrinterName'."
     Write-Host "  Motivo     : $erroMsg"
     Write-Host "  Log da DLL : C:\Windows\Temp\meddrivemon_init.log"
     exit 1

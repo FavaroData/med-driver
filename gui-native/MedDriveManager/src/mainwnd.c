@@ -388,6 +388,19 @@ static void on_paint(HWND hwnd) {
 /* ── Acoes ───────────────────────────────────────────────────────────── */
 static void on_add(HWND hwnd) {
     if (g_count >= MAX_PRINTERS) return;
+
+    /* Verifica pre-requisito: DLL instalada em System32 */
+    wchar_t dllPath[MAX_PATH];
+    GetSystemDirectoryW(dllPath, MAX_PATH);
+    wcsncat_s(dllPath, MAX_PATH, L"\\meddrivemon.dll", _TRUNCATE);
+    if (GetFileAttributesW(dllPath) == INVALID_FILE_ATTRIBUTES) {
+        MessageBoxW(hwnd,
+            L"meddrivemon.dll não encontrada em System32.\r\n"
+            L"Execute o instalador principal antes de adicionar impressoras.",
+            L"Pré-requisito ausente", MB_ICONERROR | MB_OK);
+        return;
+    }
+
     PrinterEntry entry = {0};
     if (!dlg_add_show(hwnd, &entry)) return;
     /* Lanca o script PS elevado; so salva se sucesso */

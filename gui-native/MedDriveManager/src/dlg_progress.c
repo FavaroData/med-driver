@@ -157,10 +157,10 @@ static DWORD WINAPI ps_thread(LPVOID param) {
         DWORD err = GetLastError();
         wchar_t msg[200];
         if (err == ERROR_CANCELLED)
-            wcscpy_s(msg, 200, L"\r\n[Operacao cancelada pelo usuario.]\r\n");
+            wcscpy_s(msg, 200, L"\r\n[Operação cancelada pelo usuário.]\r\n");
         else
             _snwprintf_s(msg, 200, _TRUNCATE,
-                L"\r\n[Erro ao iniciar PowerShell: codigo %lu]\r\n", err);
+                L"\r\n[Erro ao iniciar PowerShell: código %lu]\r\n", err);
 
         wchar_t *copy = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, 200 * sizeof(wchar_t));
         if (copy) {
@@ -336,8 +336,8 @@ BOOL dlg_progress_run(HWND parent,
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo add-printer.ps1 nao encontrado.\r\n"
-            L"Certifique-se de que esta na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo add-printer.ps1 não encontrado.\r\n"
+            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }

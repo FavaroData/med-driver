@@ -17,85 +17,25 @@ BrandingText  "Meddrive Printer"
 ; solicita admin
 RequestExecutionLevel admin
 
-; ---------- variáveis ----------
-Var OutputFolder
-Var PrinterName
-
 ; ---------- páginas MUI ----------
 !define MUI_ABORTWARNING
-
-Page custom PgOutputFolder PgOutputFolderLeave
 
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "PortugueseBR"
 
-; ---------- página: configuração ----------
-!include "nsDialogs.nsh"
-Var hDlg
-Var hPrinterLabel
-Var hPrinterText
-Var hLabel
-Var hFolderText
-Var hBrowse
-
-Function PgOutputFolder
-    !insertmacro MUI_HEADER_TEXT "Configuração" "Nome da impressora e pasta de destino dos PDFs"
-
-    nsDialogs::Create 1018
-    Pop $hDlg
-
-    ${NSD_CreateLabel} 0 0u 100% 12u "Nome da impressora:"
-    Pop $hPrinterLabel
-
-    ${NSD_CreateText} 0 14u 300u 14u "Meddrive Printer"
-    Pop $hPrinterText
-
-    ${NSD_CreateLabel} 0 36u 100% 12u "Pasta de destino dos arquivos PDF:"
-    Pop $hLabel
-
-    ${NSD_CreateDirRequest} 0 52u 248u 14u "$DOCUMENTS\PDF"
-    Pop $hFolderText
-
-    ${NSD_CreateBrowseButton} 252u 51u 48u 15u "Procurar..."
-    Pop $hBrowse
-    GetFunctionAddress $0 OnBrowseFolder
-    nsDialogs::OnClick $hBrowse $0
-
-    nsDialogs::Show
-FunctionEnd
-
-Function OnBrowseFolder
-    nsDialogs::SelectFolderDialog "Selecione a pasta de saída" "$DOCUMENTS\PDF"
-    Pop $0
-    ${If} $0 != error
-        ${NSD_SetText} $hFolderText $0
-    ${EndIf}
-FunctionEnd
-
-Function PgOutputFolderLeave
-    ${NSD_GetText} $hPrinterText $PrinterName
-    ${If} $PrinterName == ""
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Informe o nome da impressora."
-        Abort
-    ${EndIf}
-    ${NSD_GetText} $hFolderText $OutputFolder
-    ${If} $OutputFolder == ""
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Selecione uma pasta de destino."
-        Abort
-    ${EndIf}
-FunctionEnd
-
 ; ---------- instalação ----------
 Section "Instalar Meddrive Printer" SecInstall
 
-    ; extrai DLL e scripts de instalação
+    ; extrai DLL e scripts para diretório temporário
     SetOutPath "$INSTDIR"
     File "..\..\meddrivemon.dll"
     SetOutPath "$INSTDIR\installer"
     File "MEDDRIVE.PPD"
     File "install.ps1"
+    File "add-printer.ps1"
+    File "x64\Debug\MedDriveManager.exe"
 
     ; lê ProgramData do ambiente Windows em tempo de execução
     ReadEnvStr $R0 "ProgramData"
@@ -110,15 +50,14 @@ Section "Instalar Meddrive Printer" SecInstall
     SetOutPath "$R0\Meddrive Printer\Ghostscript\iccprofiles"
     File /r "..\..\gs\ghostscript\iccprofiles\*"
 
-    ; caminho fixo do Ghostscript bundled
-    StrCpy $1 "$OutputFolder\saida.pdf"
-
     DetailPrint "Executando instalador PowerShell..."
-    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1" -OutputPath "$1" -PrinterName "$PrinterName"'
+    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1"'
     Pop $0
 
-    ; limpa temporários do INSTDIR (Ghostscript permanece em Program Files)
+    ; limpa temporários (arquivos já copiados para ProgramData pelo install.ps1)
     Delete "$INSTDIR\installer\install.ps1"
+    Delete "$INSTDIR\installer\add-printer.ps1"
+    Delete "$INSTDIR\installer\MedDriveManager.exe"
     Delete "$INSTDIR\installer\MEDDRIVE.PPD"
     RMDir  "$INSTDIR\installer"
     Delete "$INSTDIR\meddrivemon.dll"
@@ -127,14 +66,13 @@ Section "Instalar Meddrive Printer" SecInstall
     ${If} $0 != 0
         DetailPrint "ERRO: instalação falhou (código $0)"
         MessageBox MB_OK|MB_ICONSTOP \
-            "A instalação falhou.$\n$\nConsulte o log em:$\nC:\Windows\Temp\meddrivemon_init.log"
+            "A instalação falhou.$\n$\nConsulte o log em:$\nC:\Windows\Temp\meddrive_ps_install.log"
         SetErrorLevel 1
         Quit
     ${EndIf}
 
     DetailPrint "Instalação concluída."
-    DetailPrint "  Impressora : $PrinterName"
-    DetailPrint "  Saída      : $1"
+    DetailPrint "  Aplicativo : $R0\Meddrive Printer\MedDriveManager.exe"
     DetailPrint "  Ghostscript: $R0\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 
 SectionEnd
