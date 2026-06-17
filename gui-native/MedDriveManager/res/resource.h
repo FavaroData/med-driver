@@ -14,3 +14,7 @@
 #define IDC_BTN_BROWSE      204
 
 #define IDM_EXIT            401
+
+#define IDD_PROGRESS              500
+#define IDC_EDIT_OUTPUT           501
+#define IDC_BTN_CLOSE_PROGRESS    502

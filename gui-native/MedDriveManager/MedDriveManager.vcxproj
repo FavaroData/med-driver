@@ -154,12 +154,14 @@
     <ClCompile Include="src\main.c" />
     <ClCompile Include="src\mainwnd.c" />
     <ClCompile Include="src\dlg_add.c" />
+    <ClCompile Include="src\dlg_progress.c" />
     <ClCompile Include="src\store.c" />
   </ItemGroup>
 
   <ItemGroup>
     <ClInclude Include="src\mainwnd.h" />
     <ClInclude Include="src\dlg_add.h" />
+    <ClInclude Include="src\dlg_progress.h" />
     <ClInclude Include="src\store.h" />
     <ClInclude Include="res\resource.h" />
   </ItemGroup>

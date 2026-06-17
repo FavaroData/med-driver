@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "mainwnd.h"
 #include "dlg_add.h"
+#include "dlg_progress.h"
 #include "store.h"
 #include "resource.h"
 
@@ -388,11 +389,12 @@ static void on_paint(HWND hwnd) {
 static void on_add(HWND hwnd) {
     if (g_count >= MAX_PRINTERS) return;
     PrinterEntry entry = {0};
-    if (dlg_add_show(hwnd, &entry)) {
-        g_printers[g_count++] = entry;
-        list_refresh();
-        store_save(g_printers, g_count);
-    }
+    if (!dlg_add_show(hwnd, &entry)) return;
+    /* Lanca o script PS elevado; so salva se sucesso */
+    if (!dlg_progress_run(hwnd, entry.name, entry.outputPath)) return;
+    g_printers[g_count++] = entry;
+    list_refresh();
+    store_save(g_printers, g_count);
 }
 
 static void on_remove(HWND hwnd) {
