@@ -411,9 +411,24 @@ static void on_add(HWND hwnd) {
 }
 
 static void on_remove(HWND hwnd) {
-    (void)hwnd;
     int sel = ListView_GetNextItem(g_hwndList, -1, LVNI_SELECTED);
     if (sel < 0 || sel >= g_count) return;
+
+    wchar_t confirm[512];
+    _snwprintf_s(confirm, 512, _TRUNCATE,
+        L"Remover a impressora \"%s\"?\r\n\r\n"
+        L"A impressora, a porta e todas as configurações associadas\r\n"
+        L"serão removidas do Windows.",
+        g_printers[sel].name);
+    if (MessageBoxW(hwnd, confirm, L"Confirmar remoção",
+                    MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+        return;
+
+    wchar_t name[PRINTER_NAME_MAX];
+    wcsncpy_s(name, PRINTER_NAME_MAX, g_printers[sel].name, _TRUNCATE);
+
+    if (!dlg_progress_remove(hwnd, name)) return;
+
     for (int i = sel; i < g_count - 1; i++)
         g_printers[i] = g_printers[i + 1];
     g_count--;

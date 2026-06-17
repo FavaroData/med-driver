@@ -96,6 +96,7 @@ Section "Instalar Meddrive Printer" SecInstall
     File "MEDDRIVE.PPD"
     File "install.ps1"
     File "add-printer.ps1"
+    File "remove-printer.ps1"
     File "x64\Debug\MedDriveManager.exe"
 
     ; lê ProgramData do ambiente Windows em tempo de execução
@@ -118,6 +119,7 @@ Section "Instalar Meddrive Printer" SecInstall
     ; limpa temporários (arquivos já copiados para ProgramData pelo install.ps1)
     Delete "$INSTDIR\installer\install.ps1"
     Delete "$INSTDIR\installer\add-printer.ps1"
+    Delete "$INSTDIR\installer\remove-printer.ps1"
     Delete "$INSTDIR\installer\MedDriveManager.exe"
     Delete "$INSTDIR\installer\MEDDRIVE.PPD"
     RMDir  "$INSTDIR\installer"
