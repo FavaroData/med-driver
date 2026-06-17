@@ -47,6 +47,7 @@ static const wchar_t *TAB_LABELS[TAB_COUNT] = {
 /* ── Estado global ──────────────────────────────────────────────────── */
 static HWND g_hwndMain;
 static HWND g_hwndList;
+static HWND g_hwndHeader;
 static HWND g_hwndBtnAdd;
 static HWND g_hwndBtnRemove;
 static HWND g_hwndStatus;
@@ -104,50 +105,65 @@ static void switch_tab(int tab) {
     UpdateWindow(g_hwndMain);
 }
 
-/* ── Subclass do ListView: header escuro ─────────────────────────────── */
-static LRESULT CALLBACK ListViewSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-                                          UINT_PTR uid, DWORD_PTR data) {
-    if (msg == WM_NOTIFY) {
-        NMHDR *nhdr = (NMHDR *)lp;
-        if (nhdr->code == NM_CUSTOMDRAW) {
-            NMCUSTOMDRAW *cd = (NMCUSTOMDRAW *)lp;
-            switch (cd->dwDrawStage) {
-            case CDDS_PREPAINT:
-                FillRect(cd->hdc, &cd->rc, g_hbrHdr);
-                return CDRF_NOTIFYITEMDRAW;
-            case CDDS_ITEMPREPAINT: {
-                FillRect(cd->hdc, &cd->rc, g_hbrHdr);
+/* ── Subclass do Header: fundo escuro completo ───────────────────────── */
+static LRESULT CALLBACK HeaderSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                        UINT_PTR uid, DWORD_PTR data) {
+    if (msg == WM_ERASEBKGND) {
+        RECT rc; GetClientRect(hwnd, &rc);
+        FillRect((HDC)wp, &rc, g_hbrHdr);
+        return 1;
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(hwnd, &ps);
+        RECT rc; GetClientRect(hwnd, &rc);
 
-                wchar_t buf[128] = {0};
-                HDITEMW hdi = {0};
-                hdi.mask       = HDI_TEXT;
-                hdi.pszText    = buf;
-                hdi.cchTextMax = 128;
-                SendMessageW(nhdr->hwndFrom, HDM_GETITEM,
-                             cd->dwItemSpec, (LPARAM)&hdi);
+        /* Fundo completo — cobre a area vazia apos a ultima coluna */
+        FillRect(dc, &rc, g_hbrHdr);
 
-                SetTextColor(cd->hdc, CLR_HDR_TEXT);
-                SetBkMode(cd->hdc, TRANSPARENT);
-                HFONT of = (HFONT)SelectObject(cd->hdc, g_hFont);
-                RECT rt = cd->rc;
-                InflateRect(&rt, -6, 0);
-                DrawTextW(cd->hdc, buf, -1, &rt,
-                          DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-                SelectObject(cd->hdc, of);
+        int count = (int)SendMessageW(hwnd, HDM_GETITEMCOUNT, 0, 0);
+        for (int i = 0; i < count; i++) {
+            RECT itemRc = {0};
+            SendMessageW(hwnd, HDM_GETITEMRECT, (WPARAM)i, (LPARAM)&itemRc);
 
+            wchar_t buf[128] = {0};
+            HDITEMW hdi = {0};
+            hdi.mask       = HDI_TEXT;
+            hdi.pszText    = buf;
+            hdi.cchTextMax = 128;
+            SendMessageW(hwnd, HDM_GETITEM, (WPARAM)i, (LPARAM)&hdi);
+
+            /* Texto */
+            SetTextColor(dc, CLR_HDR_TEXT);
+            SetBkMode(dc, TRANSPARENT);
+            HFONT of = (HFONT)SelectObject(dc, g_hFont);
+            RECT rt = itemRc;
+            InflateRect(&rt, -6, 0);
+            DrawTextW(dc, buf, -1, &rt,
+                      DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            SelectObject(dc, of);
+
+            /* Borda direita — apenas entre colunas, nao na ultima */
+            if (i < count - 1) {
                 HPEN hp = CreatePen(PS_SOLID, 1, CLR_HDR_BORDER);
-                HPEN op = (HPEN)SelectObject(cd->hdc, hp);
-                MoveToEx(cd->hdc, cd->rc.right - 1, cd->rc.top, NULL);
-                LineTo(cd->hdc, cd->rc.right - 1, cd->rc.bottom);
-                MoveToEx(cd->hdc, cd->rc.left, cd->rc.bottom - 1, NULL);
-                LineTo(cd->hdc, cd->rc.right, cd->rc.bottom - 1);
-                SelectObject(cd->hdc, op);
+                HPEN op = (HPEN)SelectObject(dc, hp);
+                MoveToEx(dc, itemRc.right - 1, itemRc.top, NULL);
+                LineTo(dc, itemRc.right - 1, itemRc.bottom);
+                SelectObject(dc, op);
                 DeleteObject(hp);
-
-                return CDRF_SKIPDEFAULT;
-            }
             }
         }
+
+        /* Linha inferior do header */
+        HPEN hp = CreatePen(PS_SOLID, 1, CLR_HDR_BORDER);
+        HPEN op = (HPEN)SelectObject(dc, hp);
+        MoveToEx(dc, rc.left, rc.bottom - 1, NULL);
+        LineTo(dc, rc.right, rc.bottom - 1);
+        SelectObject(dc, op);
+        DeleteObject(hp);
+
+        EndPaint(hwnd, &ps);
+        return 0;
     }
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -219,8 +235,9 @@ static void on_create(HWND hwnd) {
     col.cx = 260; col.pszText = L"Pasta de Destino";
     ListView_InsertColumn(g_hwndList, 2, &col);
 
-    /* Subclass para header escuro */
-    SetWindowSubclass(g_hwndList, ListViewSubclass, 0, 0);
+    /* Subclass direto no header para fundo escuro completo */
+    g_hwndHeader = ListView_GetHeader(g_hwndList);
+    SetWindowSubclass(g_hwndHeader, HeaderSubclass, 0, 0);
 
     /* Botoes na barra inferior */
     g_hwndBtnAdd = CreateWindowW(L"BUTTON", L"+ Adicionar",
@@ -450,7 +467,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     case WM_DESTROY:
-        RemoveWindowSubclass(g_hwndList, ListViewSubclass, 0);
+        RemoveWindowSubclass(g_hwndHeader, HeaderSubclass, 0);
         DeleteObject(g_hFont);
         DeleteObject(g_hbrBg);
         DeleteObject(g_hbrTabBg);
@@ -476,11 +493,16 @@ BOOL mainwnd_register(HINSTANCE hInst) {
 }
 
 HWND mainwnd_create(HINSTANCE hInst) {
+    int w  = 700, h  = 520;
+    int sw = GetSystemMetrics(SM_CXSCREEN);
+    int sh = GetSystemMetrics(SM_CYSCREEN);
+    int x  = (sw - w) / 2;
+    int y  = (sh - h) / 2;
     return CreateWindowExW(
         0,
         WC_MAINWND,
         L"MedDrive — Gerenciador de Impressoras",
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-        CW_USEDEFAULT, CW_USEDEFAULT, 700, 520,
+        x, y, w, h,
         NULL, NULL, hInst, NULL);
 }
