@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
 #include <shlobj.h>
 #include <objbase.h>
 #include <wctype.h>
@@ -40,7 +41,7 @@ void derive_port_name(const wchar_t *printerName, wchar_t *portName, int cchPort
     suffix[si] = 0;
 
     if (suffix[0])
-        _snwprintf_s(portName, cchPort, _TRUNCATE, L"Meddrive Printer PORT %s", suffix);
+        _snwprintf_s(portName, cchPort, _TRUNCATE, L"Meddrive Printer PORT - %s", suffix);
     else
         wcsncpy_s(portName, cchPort, L"Meddrive Printer PORT", _TRUNCATE);
 }
@@ -54,6 +55,7 @@ static void on_browse(HWND hwnd) {
     if (pidl) {
         wchar_t path[MAX_PATH];
         SHGetPathFromIDListW(pidl, path);
+        wcsncat_s(path, MAX_PATH, L"\\saida.pdf", _TRUNCATE);
         SetDlgItemTextW(hwnd, IDC_EDIT_PATH, path);
         CoTaskMemFree(pidl);
     }

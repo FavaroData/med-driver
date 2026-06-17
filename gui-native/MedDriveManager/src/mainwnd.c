@@ -508,7 +508,7 @@ BOOL mainwnd_register(HINSTANCE hInst) {
 }
 
 HWND mainwnd_create(HINSTANCE hInst) {
-    int w  = 700, h  = 520;
+    int w  = 800, h  = 560;
     int sw = GetSystemMetrics(SM_CXSCREEN);
     int sh = GetSystemMetrics(SM_CYSCREEN);
     int x  = (sw - w) / 2;
@@ -516,8 +516,8 @@ HWND mainwnd_create(HINSTANCE hInst) {
     return CreateWindowExW(
         0,
         WC_MAINWND,
-        L"MedDrive — Gerenciador de Impressoras",
-        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+        L"Meddrive Printer Manager",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_CLIPCHILDREN,
         x, y, w, h,
         NULL, NULL, hInst, NULL);
 }
