@@ -26,7 +26,7 @@ mkdir -p "$OUT"
 $MINGW-gcc -mwindows \
     "$TMP/main.o" "$TMP/mainwnd.o" "$TMP/dlg_add.o" \
     "$TMP/dlg_progress.o" "$TMP/store.o" "$TMP/app_res.o" \
-    -lcomctl32 -lcomdlg32 -lshell32 -lole32 \
+    -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool \
     -o "$OUT/MedDriveManager.exe"
 
 echo "  -> $OUT/MedDriveManager.exe"

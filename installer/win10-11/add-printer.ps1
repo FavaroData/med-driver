@@ -9,9 +9,10 @@ param(
 
 $LogFile   = "C:\Windows\Temp\meddrive_ps_addprinter.log"
 $LogWriter = [System.IO.StreamWriter]::new($LogFile, $false, [System.Text.Encoding]::Unicode)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Log($msg) {
-    Write-Host $msg
+    [Console]::Out.WriteLine($msg)
     $LogWriter.WriteLine($msg)
     $LogWriter.Flush()
 }

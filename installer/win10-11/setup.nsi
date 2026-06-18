@@ -69,6 +69,7 @@ Function PgPaths
     StrCpy $R4 "$R4$\r$\nAplicativo de gerenciamento:$\r$\n"
     StrCpy $R4 "$R4  $R3\MedDriveManager.exe$\r$\n"
     StrCpy $R4 "$R4  $R3\add-printer.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\remove-printer.ps1$\r$\n"
     StrCpy $R4 "$R4$\r$\nGhostscript (motor PDF):$\r$\n"
     StrCpy $R4 "$R4  $R3\Ghostscript\"
     SendMessage $hEditPaths ${WM_SETTEXT} 0 "STR:$R4"

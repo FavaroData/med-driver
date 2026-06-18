@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <stdio.h>
+#include <winspool.h>
 #include "mainwnd.h"
 #include "dlg_add.h"
 #include "dlg_progress.h"
@@ -51,6 +52,7 @@ static HWND g_hwndList;
 static HWND g_hwndHeader;
 static HWND g_hwndBtnAdd;
 static HWND g_hwndBtnRemove;
+static HWND g_hwndBtnRefresh;
 static HWND g_hwndStatus;
 static HFONT g_hFont;
 static HBRUSH g_hbrBg;
@@ -99,9 +101,10 @@ static void list_refresh(void) {
 static void switch_tab(int tab) {
     g_activeTab = tab;
     BOOL imp = (tab == 0);
-    ShowWindow(g_hwndList,      imp ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnAdd,    imp ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnRemove, imp ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndList,       imp ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnAdd,     imp ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnRemove,  imp ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnRefresh, imp ? SW_SHOW : SW_HIDE);
     InvalidateRect(g_hwndMain, NULL, TRUE);
     UpdateWindow(g_hwndMain);
 }
@@ -251,8 +254,14 @@ static void on_create(HWND hwnd) {
         0, 0, 0, 0,
         hwnd, (HMENU)(UINT_PTR)IDC_BTN_REMOVE, hInst, NULL);
 
-    SendMessageW(g_hwndBtnAdd,    WM_SETFONT, (WPARAM)g_hFont, TRUE);
-    SendMessageW(g_hwndBtnRemove, WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    g_hwndBtnRefresh = CreateWindowW(L"BUTTON", L"Atualizar",
+        WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
+        0, 0, 0, 0,
+        hwnd, (HMENU)(UINT_PTR)IDC_BTN_REFRESH, hInst, NULL);
+
+    SendMessageW(g_hwndBtnAdd,     WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(g_hwndBtnRemove,  WM_SETFONT, (WPARAM)g_hFont, TRUE);
+    SendMessageW(g_hwndBtnRefresh, WM_SETFONT, (WPARAM)g_hFont, TRUE);
 
     /* Status bar */
     g_hwndStatus = CreateWindowExW(0, STATUSCLASSNAME, NULL,
@@ -302,8 +311,9 @@ static void on_size(HWND hwnd) {
 
     /* Botoes na barra inferior */
     int btnY = btnBarTop + (BTNBAR_H - BTN_H) / 2;
-    SetWindowPos(g_hwndBtnAdd,    NULL, PAD,           btnY, BTN_W, BTN_H, SWP_NOZORDER);
-    SetWindowPos(g_hwndBtnRemove, NULL, PAD*2 + BTN_W, btnY, BTN_W, BTN_H, SWP_NOZORDER);
+    SetWindowPos(g_hwndBtnAdd,     NULL, PAD,             btnY, BTN_W, BTN_H, SWP_NOZORDER);
+    SetWindowPos(g_hwndBtnRemove,  NULL, PAD*2 + BTN_W,   btnY, BTN_W, BTN_H, SWP_NOZORDER);
+    SetWindowPos(g_hwndBtnRefresh, NULL, PAD*3 + BTN_W*2, btnY, BTN_W, BTN_H, SWP_NOZORDER);
 
     RECT rcInv = {0, 0, w, TABBAR_H};
     InvalidateRect(hwnd, &rcInv, FALSE);
@@ -385,6 +395,58 @@ static void on_paint(HWND hwnd) {
     EndPaint(hwnd, &ps);
 }
 
+/* ── Sincroniza g_printers[] com EnumPrinters ────────────────────────── */
+static void sync_with_system(void) {
+    DWORD needed = 0, returned = 0;
+    EnumPrintersW(PRINTER_ENUM_LOCAL, NULL, 2, NULL, 0, &needed, &returned);
+
+    int newCount = 0;
+    PrinterEntry newPrinters[MAX_PRINTERS];
+    memset(newPrinters, 0, sizeof(newPrinters));
+
+    if (needed > 0) {
+        BYTE *buf = (BYTE *)HeapAlloc(GetProcessHeap(), 0, needed);
+        if (buf) {
+            if (EnumPrintersW(PRINTER_ENUM_LOCAL, NULL, 2, buf, needed, &needed, &returned)) {
+                PRINTER_INFO_2W *info = (PRINTER_INFO_2W *)buf;
+                for (DWORD i = 0; i < returned && newCount < MAX_PRINTERS; i++) {
+                    if (!info[i].pDriverName) continue;
+                    if (_wcsicmp(info[i].pDriverName, L"Meddrive Printer DRIVER") != 0) continue;
+
+                    PrinterEntry *e = &newPrinters[newCount];
+                    wcsncpy_s(e->name, PRINTER_NAME_MAX, info[i].pPrinterName, _TRUNCATE);
+                    if (info[i].pPortName)
+                        wcsncpy_s(e->portName, PRINTER_PORT_MAX, info[i].pPortName, _TRUNCATE);
+
+                    /* Lê OutputPath direto do registry da porta */
+                    if (info[i].pPortName) {
+                        wchar_t regKey[512];
+                        _snwprintf_s(regKey, 512, _TRUNCATE,
+                            L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\"
+                            L"Meddrive Printer MONITOR\\Ports\\%s",
+                            info[i].pPortName);
+                        HKEY hKey;
+                        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, regKey, 0,
+                                          KEY_READ, &hKey) == ERROR_SUCCESS) {
+                            DWORD type, sz = PRINTER_PATH_MAX * sizeof(wchar_t);
+                            RegQueryValueExW(hKey, L"OutputPath", NULL, &type,
+                                             (BYTE *)e->outputPath, &sz);
+                            RegCloseKey(hKey);
+                        }
+                    }
+                    newCount++;
+                }
+            }
+            HeapFree(GetProcessHeap(), 0, buf);
+        }
+    }
+
+    g_count = newCount;
+    memcpy(g_printers, newPrinters, (size_t)newCount * sizeof(PrinterEntry));
+    list_refresh();
+    store_save(g_printers, g_count);
+}
+
 /* ── Acoes ───────────────────────────────────────────────────────────── */
 static void on_add(HWND hwnd) {
     if (g_count >= MAX_PRINTERS) return;
@@ -403,11 +465,8 @@ static void on_add(HWND hwnd) {
 
     PrinterEntry entry = {0};
     if (!dlg_add_show(hwnd, &entry)) return;
-    /* Lanca o script PS elevado; so salva se sucesso */
     if (!dlg_progress_run(hwnd, entry.name, entry.outputPath)) return;
-    g_printers[g_count++] = entry;
-    list_refresh();
-    store_save(g_printers, g_count);
+    sync_with_system();
 }
 
 static void on_remove(HWND hwnd) {
@@ -428,12 +487,7 @@ static void on_remove(HWND hwnd) {
     wcsncpy_s(name, PRINTER_NAME_MAX, g_printers[sel].name, _TRUNCATE);
 
     if (!dlg_progress_remove(hwnd, name)) return;
-
-    for (int i = sel; i < g_count - 1; i++)
-        g_printers[i] = g_printers[i + 1];
-    g_count--;
-    list_refresh();
-    store_save(g_printers, g_count);
+    sync_with_system();
 }
 
 /* ── WndProc ─────────────────────────────────────────────────────────── */
@@ -474,9 +528,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_COMMAND:
         switch (LOWORD(wp)) {
-        case IDC_BTN_ADD:    on_add(hwnd);        break;
-        case IDC_BTN_REMOVE: on_remove(hwnd);     break;
-        case IDM_EXIT:       DestroyWindow(hwnd); break;
+        case IDC_BTN_ADD:     on_add(hwnd);        break;
+        case IDC_BTN_REMOVE:  on_remove(hwnd);     break;
+        case IDC_BTN_REFRESH: sync_with_system();  break;
+        case IDM_EXIT:        DestroyWindow(hwnd); break;
         }
         return 0;
 

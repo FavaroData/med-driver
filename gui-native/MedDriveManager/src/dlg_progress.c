@@ -1,15 +1,11 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <shellapi.h>
 #include <stdio.h>
 #include "dlg_progress.h"
 #include "resource.h"
 
 #define WM_APP_PS_OUTPUT  (WM_APP + 1)  /* lParam = heap wchar_t*, dialog free */
 #define WM_APP_PS_DONE    (WM_APP + 2)  /* wParam = exit code                  */
-
-#define PROGRESS_LOG        L"C:\\Windows\\Temp\\meddrive_ps_addprinter.log"
-#define PROGRESS_LOG_REMOVE L"C:\\Windows\\Temp\\meddrive_ps_removeprinter.log"
 
 /* Cores escuras */
 #define CLR_BG         RGB(0x1E,0x1E,0x1E)
@@ -59,210 +55,95 @@ static void append_text(HWND hEdit, const wchar_t *text) {
     SendMessageW(hEdit, EM_SCROLLCARET, 0, 0);
 }
 
-/* ─── Thread de execucao do PowerShell ───────────────────────────────── */
+/* ─── Thread: lanca PS via CreateProcess e lê stdout em tempo real ───── */
 
-static void post_text(HWND hwnd, const BYTE *raw, DWORD bytes, BOOL utf16) {
-    if (bytes == 0) return;
-    wchar_t *wbuf;
-    if (utf16) {
-        DWORD wchars = bytes / 2;
-        wbuf = (wchar_t *)HeapAlloc(GetProcessHeap(), 0,
-                                    (wchars + 1) * sizeof(wchar_t));
-        if (!wbuf) return;
-        memcpy(wbuf, raw, wchars * 2);
-        wbuf[wchars] = 0;
-    } else {
-        int n = MultiByteToWideChar(CP_ACP, 0, (const char *)raw, (int)bytes, NULL, 0);
-        if (n <= 0) return;
-        wbuf = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, (n + 1) * sizeof(wchar_t));
-        if (!wbuf) return;
-        MultiByteToWideChar(CP_ACP, 0, (const char *)raw, (int)bytes, wbuf, n);
-        wbuf[n] = 0;
+static DWORD run_ps(ProgressParams *p, const wchar_t *cmd) {
+    SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, TRUE};
+    HANDLE hRead, hWrite;
+    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) {
+        PostMessage(p->hwnd, WM_APP_PS_DONE, 1, 0);
+        return 1;
     }
-    PostMessage(hwnd, WM_APP_PS_OUTPUT, 0, (LPARAM)wbuf);
-}
+    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
 
-static void read_log(HWND hwnd, const wchar_t *logPath,
-                     DWORD *pOffset, BOOL *pUtf16, BOOL *pBomChecked) {
-    HANDLE hf = CreateFileW(logPath, GENERIC_READ,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE,
-                            NULL, OPEN_EXISTING, 0, NULL);
-    if (hf == INVALID_HANDLE_VALUE) return;
+    STARTUPINFOW si = {sizeof(si)};
+    si.dwFlags    = STARTF_USESTDHANDLES;
+    si.hStdOutput = hWrite;
+    si.hStdError  = hWrite;
+    si.hStdInput  = NULL;
 
-    DWORD fileSize = GetFileSize(hf, NULL);
-    DWORD offset   = *pOffset;
-    if (fileSize <= offset) { CloseHandle(hf); return; }
+    PROCESS_INFORMATION pi = {0};
+    wchar_t cmdBuf[4096];
+    wcsncpy_s(cmdBuf, 4096, cmd, _TRUNCATE);
 
-    DWORD toRead = fileSize - offset;
-    BYTE *buf = (BYTE *)HeapAlloc(GetProcessHeap(), 0, toRead + 4);
-    if (!buf) { CloseHandle(hf); return; }
+    BOOL ok = CreateProcessW(NULL, cmdBuf, NULL, NULL, TRUE,
+                             CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+    CloseHandle(hWrite);
 
-    DWORD bytesRead = 0;
-    SetFilePointer(hf, (LONG)offset, NULL, FILE_BEGIN);
-    ReadFile(hf, buf, toRead, &bytesRead, NULL);
-    CloseHandle(hf);
+    if (!ok) {
+        DWORD err = GetLastError();
+        wchar_t msg[200];
+        _snwprintf_s(msg, 200, _TRUNCATE,
+            L"\r\n[Erro ao iniciar PowerShell: código %lu]\r\n", err);
+        wchar_t *copy = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, 200 * sizeof(wchar_t));
+        if (copy) {
+            wcscpy_s(copy, 200, msg);
+            PostMessage(p->hwnd, WM_APP_PS_OUTPUT, 0, (LPARAM)copy);
+        }
+        CloseHandle(hRead);
+        PostMessage(p->hwnd, WM_APP_PS_DONE, 1, 0);
+        return 1;
+    }
 
-    if (bytesRead == 0) { HeapFree(GetProcessHeap(), 0, buf); return; }
-    buf[bytesRead] = buf[bytesRead + 1] = buf[bytesRead + 2] = 0;
-
-    BYTE *data    = buf;
-    DWORD dataLen = bytesRead;
-
-    /* Detecta BOM UTF-16 LE no inicio do arquivo */
-    if (!*pBomChecked && offset == 0 && bytesRead >= 2) {
-        *pBomChecked = TRUE;
-        if (buf[0] == 0xFF && buf[1] == 0xFE) {
-            *pUtf16 = TRUE;
-            data    += 2;
-            dataLen -= 2;
-            *pOffset += 2;
+    /* Lê stdout do PS em tempo real */
+    char buf[4096];
+    DWORD bytesRead;
+    while (ReadFile(hRead, buf, sizeof(buf) - 1, &bytesRead, NULL) && bytesRead > 0) {
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, buf, (int)bytesRead, NULL, 0);
+        if (wlen > 0) {
+            wchar_t *wbuf = (wchar_t *)HeapAlloc(GetProcessHeap(), 0,
+                                                  (wlen + 1) * sizeof(wchar_t));
+            if (wbuf) {
+                MultiByteToWideChar(CP_UTF8, 0, buf, (int)bytesRead, wbuf, wlen);
+                wbuf[wlen] = 0;
+                PostMessage(p->hwnd, WM_APP_PS_OUTPUT, 0, (LPARAM)wbuf);
+            }
         }
     }
+    CloseHandle(hRead);
 
-    if (dataLen == 0) { HeapFree(GetProcessHeap(), 0, buf); return; }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
 
-    if (*pUtf16) {
-        DWORD even = dataLen & ~1u;
-        if (even > 0) {
-            post_text(hwnd, data, even, TRUE);
-            *pOffset += even;
-        }
-    } else {
-        post_text(hwnd, data, dataLen, FALSE);
-        *pOffset += dataLen;
-    }
-
-    HeapFree(GetProcessHeap(), 0, buf);
+    PostMessage(p->hwnd, WM_APP_PS_DONE, (WPARAM)exitCode, 0);
+    return exitCode;
 }
 
 static DWORD WINAPI ps_thread(LPVOID param) {
     ProgressParams *p = (ProgressParams *)param;
-
-    DeleteFileW(PROGRESS_LOG);
-
-    wchar_t ps_params[4096];
-    _snwprintf_s(ps_params, 4096, _TRUNCATE,
-        L"-ExecutionPolicy Bypass -NoProfile -File \"%s\""
+    wchar_t cmd[4096];
+    _snwprintf_s(cmd, 4096, _TRUNCATE,
+        L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
         L" -PrinterName \"%s\" -OutputPath \"%s\"",
         p->scriptPath, p->printerName, p->outputPath);
-
-    SHELLEXECUTEINFOW sei = {sizeof(sei)};
-    sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
-    sei.lpVerb       = L"runas";
-    sei.lpFile       = L"powershell.exe";
-    sei.lpParameters = ps_params;
-    sei.nShow        = SW_HIDE;
-
-    if (!ShellExecuteExW(&sei)) {
-        DWORD err = GetLastError();
-        wchar_t msg[200];
-        if (err == ERROR_CANCELLED)
-            wcscpy_s(msg, 200, L"\r\n[Operação cancelada pelo usuário.]\r\n");
-        else
-            _snwprintf_s(msg, 200, _TRUNCATE,
-                L"\r\n[Erro ao iniciar PowerShell: código %lu]\r\n", err);
-
-        wchar_t *copy = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, 200 * sizeof(wchar_t));
-        if (copy) {
-            wcscpy_s(copy, 200, msg);
-            PostMessage(p->hwnd, WM_APP_PS_OUTPUT, 0, (LPARAM)copy);
-        }
-        PostMessage(p->hwnd, WM_APP_PS_DONE, 1, 0);
-        HeapFree(GetProcessHeap(), 0, p);
-        return 1;
-    }
-
-    HANDLE hProcess = sei.hProcess;
-
-    for (int i = 0; i < 50; i++) {
-        DWORD attr = GetFileAttributesW(PROGRESS_LOG);
-        if (attr != INVALID_FILE_ATTRIBUTES) break;
-        Sleep(100);
-    }
-
-    DWORD offset     = 0;
-    BOOL  utf16      = FALSE;
-    BOOL  bomChecked = FALSE;
-
-    for (;;) {
-        BOOL done = (WaitForSingleObject(hProcess, 300) != WAIT_TIMEOUT);
-        read_log(p->hwnd, PROGRESS_LOG, &offset, &utf16, &bomChecked);
-        if (done) break;
-    }
-    read_log(p->hwnd, PROGRESS_LOG, &offset, &utf16, &bomChecked);
-
-    DWORD exitCode = 1;
-    GetExitCodeProcess(hProcess, &exitCode);
-    CloseHandle(hProcess);
-
-    PostMessage(p->hwnd, WM_APP_PS_DONE, (WPARAM)exitCode, 0);
+    DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
-    return 0;
+    return r;
 }
 
 static DWORD WINAPI ps_thread_remove(LPVOID param) {
     ProgressParams *p = (ProgressParams *)param;
-
-    DeleteFileW(PROGRESS_LOG_REMOVE);
-
-    wchar_t ps_params[4096];
-    _snwprintf_s(ps_params, 4096, _TRUNCATE,
-        L"-ExecutionPolicy Bypass -NoProfile -File \"%s\""
+    wchar_t cmd[4096];
+    _snwprintf_s(cmd, 4096, _TRUNCATE,
+        L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
         L" -PrinterName \"%s\"",
         p->scriptPath, p->printerName);
-
-    SHELLEXECUTEINFOW sei = {sizeof(sei)};
-    sei.fMask        = SEE_MASK_NOCLOSEPROCESS;
-    sei.lpVerb       = L"runas";
-    sei.lpFile       = L"powershell.exe";
-    sei.lpParameters = ps_params;
-    sei.nShow        = SW_HIDE;
-
-    if (!ShellExecuteExW(&sei)) {
-        DWORD err = GetLastError();
-        wchar_t msg[200];
-        if (err == ERROR_CANCELLED)
-            wcscpy_s(msg, 200, L"\r\n[Operação cancelada pelo usuário.]\r\n");
-        else
-            _snwprintf_s(msg, 200, _TRUNCATE,
-                L"\r\n[Erro ao iniciar PowerShell: código %lu]\r\n", err);
-
-        wchar_t *copy = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, 200 * sizeof(wchar_t));
-        if (copy) {
-            wcscpy_s(copy, 200, msg);
-            PostMessage(p->hwnd, WM_APP_PS_OUTPUT, 0, (LPARAM)copy);
-        }
-        PostMessage(p->hwnd, WM_APP_PS_DONE, 1, 0);
-        HeapFree(GetProcessHeap(), 0, p);
-        return 1;
-    }
-
-    HANDLE hProcess = sei.hProcess;
-
-    for (int i = 0; i < 50; i++) {
-        DWORD attr = GetFileAttributesW(PROGRESS_LOG_REMOVE);
-        if (attr != INVALID_FILE_ATTRIBUTES) break;
-        Sleep(100);
-    }
-
-    DWORD offset     = 0;
-    BOOL  utf16      = FALSE;
-    BOOL  bomChecked = FALSE;
-
-    for (;;) {
-        BOOL done = (WaitForSingleObject(hProcess, 300) != WAIT_TIMEOUT);
-        read_log(p->hwnd, PROGRESS_LOG_REMOVE, &offset, &utf16, &bomChecked);
-        if (done) break;
-    }
-    read_log(p->hwnd, PROGRESS_LOG_REMOVE, &offset, &utf16, &bomChecked);
-
-    DWORD exitCode = 1;
-    GetExitCodeProcess(hProcess, &exitCode);
-    CloseHandle(hProcess);
-
-    PostMessage(p->hwnd, WM_APP_PS_DONE, (WPARAM)exitCode, 0);
+    DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
-    return 0;
+    return r;
 }
 
 /* ─── Desenho do botao owner-draw ─────────────────────────────────────── */
@@ -321,6 +202,7 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         ProgressParams *p = (ProgressParams *)lp;
         s_removeMode = p->removeMode;
         p->hwnd = hwnd;
+        SetWindowTextW(hwnd, s_removeMode ? L"Removendo Impressora" : L"Adicionando Impressora");
         LPTHREAD_START_ROUTINE fn = p->removeMode ? ps_thread_remove : ps_thread;
         HANDLE hThread = CreateThread(NULL, 0, fn, p, 0, NULL);
         if (hThread) CloseHandle(hThread);

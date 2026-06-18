@@ -6,6 +6,7 @@
 #define IDC_BTN_ADD         102
 #define IDC_BTN_REMOVE      103
 #define IDC_STATUS_BAR      104
+#define IDC_BTN_REFRESH     105
 
 #define IDD_ADD_PRINTER     200
 #define IDC_EDIT_NAME       201
