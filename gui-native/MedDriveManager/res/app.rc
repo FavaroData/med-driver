@@ -22,7 +22,7 @@ BEGIN
     /* ── Seção: Saída ── */
     LTEXT           "SAÍDA",               IDC_STATIC,       12,  93, 296,  9
 
-    LTEXT           "Template do nome de arquivo:", IDC_STATIC, 12, 107, 296, 9
+    LTEXT           "Nome do Arquivo:", IDC_STATIC, 12, 107, 296, 9
     EDITTEXT        IDC_EDIT_BASENAME,             12, 117, 240,  14, ES_AUTOHSCROLL
     PUSHBUTTON      "Inserir",  IDC_BTN_TOKEN,    254, 117,  54,  14
 
