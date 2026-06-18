@@ -13,6 +13,7 @@
 #define IDC_EDIT_PORT       202
 #define IDC_EDIT_PATH       203
 #define IDC_BTN_BROWSE      204
+#define IDC_EDIT_BASENAME   205
 
 #define IDM_EXIT            401
 

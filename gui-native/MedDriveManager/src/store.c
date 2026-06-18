@@ -88,9 +88,10 @@ int store_load(PrinterEntry **out) {
         memcpy(obj, p, (size_t)len);
 
         const char *v;
-        if ((v = find_value(obj, "name"))       != NULL) read_json_str(v, entries[count].name,       PRINTER_NAME_MAX);
-        if ((v = find_value(obj, "portName"))   != NULL) read_json_str(v, entries[count].portName,   PRINTER_PORT_MAX);
-        if ((v = find_value(obj, "outputPath")) != NULL) read_json_str(v, entries[count].outputPath, PRINTER_PATH_MAX);
+        if ((v = find_value(obj, "name"))           != NULL) read_json_str(v, entries[count].name,           PRINTER_NAME_MAX);
+        if ((v = find_value(obj, "portName"))       != NULL) read_json_str(v, entries[count].portName,       PRINTER_PORT_MAX);
+        if ((v = find_value(obj, "outputPath"))     != NULL) read_json_str(v, entries[count].outputPath,     PRINTER_PATH_MAX);
+        if ((v = find_value(obj, "outputBaseName")) != NULL) read_json_str(v, entries[count].outputBaseName, PRINTER_BASENAME_MAX);
 
         count++;
         p = end + 1;
@@ -126,14 +127,15 @@ int store_save(const PrinterEntry *entries, int count) {
     WriteFile(hf, "[\n", 2, &written, NULL);
 
     for (int i = 0; i < count; i++) {
-        char n[512], port[256], o[1024], line[2048];
+        char n[512], port[256], o[1024], bn[512], line[2560];
         write_json_str(n,    sizeof(n),    entries[i].name);
         write_json_str(port, sizeof(port), entries[i].portName);
         write_json_str(o,    sizeof(o),    entries[i].outputPath);
+        write_json_str(bn,   sizeof(bn),   entries[i].outputBaseName);
 
         int len = _snprintf_s(line, sizeof(line), _TRUNCATE,
-            "  {\"name\":%s,\"portName\":%s,\"outputPath\":%s}%s\n",
-            n, port, o, (i < count - 1) ? "," : "");
+            "  {\"name\":%s,\"portName\":%s,\"outputPath\":%s,\"outputBaseName\":%s}%s\n",
+            n, port, o, bn, (i < count - 1) ? "," : "");
         WriteFile(hf, line, (DWORD)len, &written, NULL);
     }
 

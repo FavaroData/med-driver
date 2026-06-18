@@ -3,8 +3,9 @@
 # Adiciona uma nova impressora Meddrive numa máquina onde install.ps1 já rodou.
 
 param(
-    [string]$OutputPath  = "C:\Users\favaro\Desktop\PDF\saida.pdf",
-    [string]$PrinterName = "Meddrive Printer"
+    [string]$OutputPath     = "C:\Users\favaro\Desktop\PDF",
+    [string]$OutputBaseName,
+    [string]$PrinterName    = "Meddrive Printer"
 )
 
 $LogFile   = "C:\Windows\Temp\meddrive_ps_addprinter.log"
@@ -29,6 +30,12 @@ function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Trace-Step "inicio do script"
 Trace-Step "LogWriter OK"
+
+if (-not $OutputBaseName) {
+    Log "ERRO: parâmetro -OutputBaseName é obrigatório."
+    $LogWriter.Close()
+    exit 1
+}
 
 $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 $ErrorActionPreference = "Stop"
@@ -69,12 +76,12 @@ Log "Configurando porta..."
 Trace-Step "registrando porta em $PortReg"
 New-Item -Path $PortReg -Force | Out-Null
 Set-ItemProperty -Path $PortReg -Name "OutputPath"      -Value $OutputPath      -Type String
+Set-ItemProperty -Path $PortReg -Name "OutputBaseName"  -Value $OutputBaseName  -Type String
 Set-ItemProperty -Path $PortReg -Name "GhostscriptPath" -Value $GhostscriptPath -Type String
 Trace-Step "porta configurada"
 
-$outputDir = Split-Path -Parent $OutputPath
-if (-not (Test-Path $outputDir)) {
-    New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+if (-not (Test-Path $OutputPath)) {
+    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 }
 
 # ── Spooler ───────────────────────────────────────────────────────────────
@@ -198,7 +205,7 @@ if ($success) {
     Log "Instalação concluída!"
     Log "  Impressora : $PrinterName"
     Log "  Porta      : $PortName"
-    Log "  Saída      : $OutputPath"
+    Log "  Saída      : $OutputPath\$OutputBaseName-N.pdf"
     Log "  Ghostscript: $GhostscriptPath"
 } else {
     Log "ERRO: falha ao registrar a impressora '$PrinterName'."

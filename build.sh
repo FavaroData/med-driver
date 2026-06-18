@@ -11,6 +11,16 @@ DEFS="-DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -DUNICODE -D_UNICODE"
 INC="-I$RES -I$SRC -I$MINGW_INC"
 TMP=$(mktemp -d)
 
+echo "=== Compilando DLL do monitor ==="
+$MINGW-gcc -shared \
+    -DUNICODE -D_UNICODE -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 -DNTDDI_VERSION=0x0A000000 \
+    -I"$MINGW_INC" \
+    "$PROJ_ROOT/src/monitor.c" \
+    "$PROJ_ROOT/src/monitor.def" \
+    -lwinspool -ladvapi32 \
+    -o "$PROJ_ROOT/meddrivemon.dll"
+echo "  -> $PROJ_ROOT/meddrivemon.dll"
+
 echo "=== Compilando fontes C ==="
 $MINGW-gcc $DEFS $INC -c "$SRC/main.c"          -o "$TMP/main.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/mainwnd.c"        -o "$TMP/mainwnd.o"

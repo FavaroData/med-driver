@@ -13,7 +13,8 @@
 
 // variável persistente durante o uso da dll para guardar os dados do registry e do arquivo temporário para cada job de impressão
 typedef struct {
-    WCHAR  outputPath[MAX_PATH];
+    WCHAR  outputPath[MAX_PATH];       // pasta de destino (registry: OutputPath)
+    WCHAR  outputBaseName[256];        // nome base do arquivo, sem extensão e sem número (registry: OutputBaseName)
     WCHAR  ghostscriptPath[MAX_PATH];
     WCHAR  tempPsFile[MAX_PATH];
     HANDLE hTempFile;

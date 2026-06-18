@@ -46,14 +46,22 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
         rc, rc == ERROR_SUCCESS ? "SUCCESS" : "FALHOU");
     if (rc != ERROR_SUCCESS) return FALSE;
 
-    // lê o outputpath e armazena em ctx->outputPath
-    // futuramente incluir validação do caminho (verificar se a pasta existe, se tem permissão de escrita, etc)
+    // lê a pasta de destino
     size = sizeof(ctx->outputPath);
     RegQueryValueExW(hKey, L"OutputPath", NULL, NULL, (LPBYTE)ctx->outputPath, &size);
     LogDebug("ReadConfig: OutputPath lido (len=%lu)\n", size);
 
-    // lê o ghostscriptpath e armazena em ctx->ghostscriptPath
-    // incluir a mesma coisa que o outputpath
+    // lê o nome base do arquivo; usa "saida" como fallback para impressoras antigas
+    size = sizeof(ctx->outputBaseName);
+    RegQueryValueExW(hKey, L"OutputBaseName", NULL, NULL, (LPBYTE)ctx->outputBaseName, &size);
+    if (ctx->outputBaseName[0] == L'\0') {
+        wcscpy_s(ctx->outputBaseName, 256, L"saida");
+        LogDebug("ReadConfig: OutputBaseName ausente, usando fallback 'saida'\n");
+    } else {
+        LogDebug("ReadConfig: OutputBaseName lido: %ls\n", ctx->outputBaseName);
+    }
+
+    // lê o ghostscriptpath
     size = sizeof(ctx->ghostscriptPath);
     RegQueryValueExW(hKey, L"GhostscriptPath", NULL, NULL, (LPBYTE)ctx->ghostscriptPath, &size);
     LogDebug("ReadConfig: GhostscriptPath lido (len=%lu)\n", size);
@@ -64,6 +72,57 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
     LogDebug("ReadConfig: resultado final=%s\n", ok ? "OK" : "FALHOU (paths vazios)");
     return ok;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Região: Enumeração automática de nome de arquivo
+//
+// Cada job de impressão recebe um nome único no formato:
+//   <outputBaseName>-<N>.pdf
+//
+// N é determinado escaneando a pasta de destino em busca de arquivos que
+// correspondam ao padrão "<basename>-*.pdf". O maior N encontrado define
+// de onde a contagem continua — o próximo job usa N+1.
+//
+// Comportamento:
+//   - Sem arquivos na pasta:          gera "<basename>-1.pdf"
+//   - Com "<basename>-1.pdf" a "-3":  gera "<basename>-4.pdf"
+//   - Se o usuário deletar arquivos:  retoma a partir do maior existente
+//
+// A lógica fica nesta região para facilitar expansão futura com outros
+// modos de nomenclatura (timestamp, nome do documento, etc.).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Escaneia ctx->outputPath buscando "<outputBaseName>-N.pdf" e grava em
+// resolvedPath o próximo caminho disponível. Nunca reutiliza um N existente.
+static void resolve_output_path(PORT_CONTEXT *ctx, WCHAR *resolvedPath, int cchPath) {
+    // Monta o padrão de busca para o FindFirstFile
+    WCHAR pattern[MAX_PATH];
+    _snwprintf(pattern, MAX_PATH, L"%s\\%s-*.pdf", ctx->outputPath, ctx->outputBaseName);
+
+    // Encontra o maior N já presente na pasta
+    int maxN = 0;
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(pattern, &fd);
+    if (hFind != INVALID_HANDLE_VALUE) {
+        do {
+            // O nome do arquivo é "<basename>-N.pdf"; extrai N pelo último '-'
+            const WCHAR *dash = wcsrchr(fd.cFileName, L'-');
+            if (dash) {
+                int n = _wtoi(dash + 1); // _wtoi para em '.', retorna 0 para não-número
+                if (n > maxN) maxN = n;
+            }
+        } while (FindNextFileW(hFind, &fd));
+        FindClose(hFind);
+    }
+
+    // Próximo número disponível: sempre maxN + 1
+    int nextN = maxN + 1;
+    _snwprintf(resolvedPath, cchPath, L"%s\\%s-%d.pdf",
+               ctx->outputPath, ctx->outputBaseName, nextN);
+    LogDebug("resolve_output_path: %ls\n", resolvedPath);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 
 // Converte o arquivo PostScript gerado pelo spooler em PDF usando o Ghostscript
 // executa o Ghostscript em um processo separado
@@ -79,11 +138,15 @@ static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
 
     si.cb = sizeof(si);
 
-    // executa o Ghostscript com os parâmetros armazenados em ctx no terminal
+    // determina o caminho de saída com enumeração automática
+    WCHAR resolvedPath[MAX_PATH];
+    resolve_output_path(ctx, resolvedPath, MAX_PATH);
+
+    // executa o Ghostscript com o caminho enumerado
     _snwprintf(cmdLine, 2048,
         L"\"%s\" -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%s\" \"%s\"",
         ctx->ghostscriptPath,
-        ctx->outputPath,
+        resolvedPath,
         ctx->tempPsFile);
 
     // cria o processo do Ghostscript

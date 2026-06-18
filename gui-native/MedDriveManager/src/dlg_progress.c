@@ -24,6 +24,7 @@ typedef struct {
     wchar_t scriptPath[MAX_PATH];
     wchar_t printerName[256];
     wchar_t outputPath[MAX_PATH];
+    wchar_t outputBaseName[256];
     BOOL    removeMode;
 } ProgressParams;
 
@@ -127,8 +128,8 @@ static DWORD WINAPI ps_thread(LPVOID param) {
     wchar_t cmd[4096];
     _snwprintf_s(cmd, 4096, _TRUNCATE,
         L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
-        L" -PrinterName \"%s\" -OutputPath \"%s\"",
-        p->scriptPath, p->printerName, p->outputPath);
+        L" -PrinterName \"%s\" -OutputPath \"%s\" -OutputBaseName \"%s\"",
+        p->scriptPath, p->printerName, p->outputPath, p->outputBaseName);
     DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
     return r;
@@ -274,7 +275,8 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 
 BOOL dlg_progress_run(HWND parent,
                       const wchar_t *printerName,
-                      const wchar_t *outputPath) {
+                      const wchar_t *outputPath,
+                      const wchar_t *outputBaseName) {
     wchar_t scriptPath[MAX_PATH];
     GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
     wchar_t *slash = wcsrchr(scriptPath, L'\\');
@@ -292,9 +294,10 @@ BOOL dlg_progress_run(HWND parent,
     ProgressParams *params = (ProgressParams *)HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ProgressParams));
     if (!params) return FALSE;
-    wcsncpy_s(params->scriptPath,  MAX_PATH, scriptPath,  _TRUNCATE);
-    wcsncpy_s(params->printerName, 256,      printerName, _TRUNCATE);
-    wcsncpy_s(params->outputPath,  MAX_PATH, outputPath,  _TRUNCATE);
+    wcsncpy_s(params->scriptPath,    MAX_PATH, scriptPath,    _TRUNCATE);
+    wcsncpy_s(params->printerName,   256,      printerName,   _TRUNCATE);
+    wcsncpy_s(params->outputPath,    MAX_PATH, outputPath,    _TRUNCATE);
+    wcsncpy_s(params->outputBaseName,256,      outputBaseName,_TRUNCATE);
     params->removeMode = FALSE;
 
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);

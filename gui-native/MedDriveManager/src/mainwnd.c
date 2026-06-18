@@ -92,8 +92,15 @@ static void list_refresh(void) {
         lvi.iItem   = i;
         lvi.pszText = g_printers[i].name;
         ListView_InsertItem(g_hwndList, &lvi);
-        ListView_SetItemText(g_hwndList, i, 1, g_printers[i].portName);
-        ListView_SetItemText(g_hwndList, i, 2, g_printers[i].outputPath);
+
+        /* Coluna "Nome do arquivo": exibe o padrão gerado na impressão */
+        wchar_t filePattern[PRINTER_BASENAME_MAX + 8] = {0};
+        if (g_printers[i].outputBaseName[0])
+            _snwprintf_s(filePattern, PRINTER_BASENAME_MAX + 8, _TRUNCATE,
+                         L"%s-N.pdf", g_printers[i].outputBaseName);
+        ListView_SetItemText(g_hwndList, i, 1, filePattern);
+        ListView_SetItemText(g_hwndList, i, 2, g_printers[i].portName);
+        ListView_SetItemText(g_hwndList, i, 3, g_printers[i].outputPath);
     }
     update_status();
 }
@@ -232,12 +239,14 @@ static void on_create(HWND hwnd) {
 
     LVCOLUMNW col = {0};
     col.mask = LVCF_TEXT | LVCF_WIDTH;
-    col.cx = 200; col.pszText = L"Nome";
+    col.cx = 180; col.pszText = L"Impressora";
     ListView_InsertColumn(g_hwndList, 0, &col);
-    col.cx = 150; col.pszText = L"Porta";
+    col.cx = 160; col.pszText = L"Nome do arquivo";
     ListView_InsertColumn(g_hwndList, 1, &col);
-    col.cx = 260; col.pszText = L"Pasta de Destino";
+    col.cx = 150; col.pszText = L"Porta";
     ListView_InsertColumn(g_hwndList, 2, &col);
+    col.cx = 270; col.pszText = L"Pasta de destino";
+    ListView_InsertColumn(g_hwndList, 3, &col);
 
     /* Subclass direto no header para fundo escuro completo */
     g_hwndHeader = ListView_GetHeader(g_hwndList);
@@ -428,9 +437,13 @@ static void sync_with_system(void) {
                         HKEY hKey;
                         if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, regKey, 0,
                                           KEY_READ, &hKey) == ERROR_SUCCESS) {
-                            DWORD type, sz = PRINTER_PATH_MAX * sizeof(wchar_t);
+                            DWORD type, sz;
+                            sz = PRINTER_PATH_MAX * sizeof(wchar_t);
                             RegQueryValueExW(hKey, L"OutputPath", NULL, &type,
                                              (BYTE *)e->outputPath, &sz);
+                            sz = PRINTER_BASENAME_MAX * sizeof(wchar_t);
+                            RegQueryValueExW(hKey, L"OutputBaseName", NULL, &type,
+                                             (BYTE *)e->outputBaseName, &sz);
                             RegCloseKey(hKey);
                         }
                     }
@@ -465,7 +478,7 @@ static void on_add(HWND hwnd) {
 
     PrinterEntry entry = {0};
     if (!dlg_add_show(hwnd, &entry)) return;
-    if (!dlg_progress_run(hwnd, entry.name, entry.outputPath)) return;
+    if (!dlg_progress_run(hwnd, entry.name, entry.outputPath, entry.outputBaseName)) return;
     sync_with_system();
 }
 

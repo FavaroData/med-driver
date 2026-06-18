@@ -55,7 +55,6 @@ static void on_browse(HWND hwnd) {
     if (pidl) {
         wchar_t path[MAX_PATH];
         SHGetPathFromIDListW(pidl, path);
-        wcsncat_s(path, MAX_PATH, L"\\saida.pdf", _TRUNCATE);
         SetDlgItemTextW(hwnd, IDC_EDIT_PATH, path);
         CoTaskMemFree(pidl);
     }
@@ -83,18 +82,41 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         }
         switch (LOWORD(wp)) {
-        case IDOK:
-            GetDlgItemTextW(hwnd, IDC_EDIT_NAME, s_entry->name,       PRINTER_NAME_MAX);
-            GetDlgItemTextW(hwnd, IDC_EDIT_PORT, s_entry->portName,   PRINTER_PORT_MAX);
-            GetDlgItemTextW(hwnd, IDC_EDIT_PATH, s_entry->outputPath, PRINTER_PATH_MAX);
+        case IDOK: {
+            GetDlgItemTextW(hwnd, IDC_EDIT_PORT,     s_entry->portName,       PRINTER_PORT_MAX);
+            GetDlgItemTextW(hwnd, IDC_EDIT_NAME,     s_entry->name,           PRINTER_NAME_MAX);
+            GetDlgItemTextW(hwnd, IDC_EDIT_BASENAME, s_entry->outputBaseName, PRINTER_BASENAME_MAX);
+            GetDlgItemTextW(hwnd, IDC_EDIT_PATH,     s_entry->outputPath,     PRINTER_PATH_MAX);
+
             if (s_entry->name[0] == L'\0') {
                 MessageBoxW(hwnd, L"O nome da impressora não pode estar vazio.",
                             L"Campo obrigatório", MB_ICONWARNING | MB_OK);
                 SetFocus(GetDlgItem(hwnd, IDC_EDIT_NAME));
                 return TRUE;
             }
+            if (s_entry->outputBaseName[0] == L'\0') {
+                MessageBoxW(hwnd, L"O nome do arquivo não pode estar vazio.",
+                            L"Campo obrigatório", MB_ICONWARNING | MB_OK);
+                SetFocus(GetDlgItem(hwnd, IDC_EDIT_BASENAME));
+                return TRUE;
+            }
+            /* Bloqueia caracteres inválidos em nomes de arquivo do Windows */
+            {
+                static const wchar_t invalid[] = L"\\/:*?\"<>|";
+                for (int i = 0; s_entry->outputBaseName[i]; i++) {
+                    if (wcschr(invalid, s_entry->outputBaseName[i])) {
+                        MessageBoxW(hwnd,
+                            L"O nome do arquivo contém caracteres inválidos.\r\n"
+                            L"Não são permitidos: \\ / : * ? \" < > |",
+                            L"Nome inválido", MB_ICONWARNING | MB_OK);
+                        SetFocus(GetDlgItem(hwnd, IDC_EDIT_BASENAME));
+                        return TRUE;
+                    }
+                }
+            }
             EndDialog(hwnd, IDOK);
             return TRUE;
+        }
 
         case IDCANCEL:
             EndDialog(hwnd, IDCANCEL);

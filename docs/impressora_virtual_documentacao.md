@@ -76,7 +76,59 @@ arquivo .ps temporário removido
 
 ---
 
-## 4. Nomenclatura e Configuração
+## 4. Nomes Customizados
+
+Cada impressora cadastrada via `MedDriveManager` pode ter um nome de arquivo configurado individualmente. A cada job de impressão o DLL gera automaticamente um novo arquivo sem sobrescrever os anteriores.
+
+### 4.1 Formato
+
+```
+<outputBaseName>-<N>.pdf
+```
+
+Exemplos com `outputBaseName = "relatorio"`:
+
+| Arquivos existentes na pasta | Próximo arquivo gerado |
+|---|---|
+| nenhum | `relatorio-1.pdf` |
+| `relatorio-1.pdf` | `relatorio-2.pdf` |
+| `relatorio-1.pdf`, `relatorio-2.pdf`, `relatorio-3.pdf` | `relatorio-4.pdf` |
+| `relatorio-1.pdf`, `relatorio-3.pdf` (2 deletado) | `relatorio-4.pdf` |
+
+> O número sempre continua a partir do maior N existente, independente de arquivos deletados no meio.
+
+### 4.2 Como o N é determinado
+
+A lógica está em `resolve_output_path()` no `src/monitor.c`, dentro da região marcada **"Enumeração automática de nome de arquivo"**:
+
+1. Monta o padrão `<outputPath>\<outputBaseName>-*.pdf`
+2. Escaneia a pasta com `FindFirstFileW` / `FindNextFileW`
+3. Para cada arquivo encontrado, extrai N com `wcsrchr(filename, L'-')` + `_wtoi()`
+4. Usa `maxN + 1` como próximo número
+5. Se a pasta estiver vazia: começa em 1
+
+A função é chamada por `ConvertPsToPdf()` no momento exato da impressão — antes de acionar o Ghostscript — garantindo que o scan reflete o estado atual da pasta.
+
+### 4.3 Registry
+
+A configuração da porta passou a usar dois valores separados:
+
+```
+HKLM\...\Meddrive Printer MONITOR\Ports\<PortName>
+    OutputPath      = "C:\Users\...\PDF"          ← pasta de destino
+    OutputBaseName  = "relatorio"                  ← nome base (sem extensão, sem número)
+    GhostscriptPath = "C:\ProgramData\...\gswin64c.exe"
+```
+
+> **Retrocompatibilidade:** impressoras criadas antes desta feature não possuem `OutputBaseName` no registry. O DLL detecta o campo ausente e usa `"saida"` como fallback, mantendo o comportamento anterior.
+
+### 4.4 Validação no app
+
+O campo "Nome do arquivo" no dialog "Adicionar Impressora" é obrigatório e bloqueia os seguintes caracteres inválidos no Windows: `\ / : * ? " < > |`
+
+---
+
+## 5. Nomenclatura e Configuração
 
 | Item | Nome | Localização no Windows |
 |---|---|---|
@@ -92,7 +144,8 @@ arquivo .ps temporário removido
 
 ```
 HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR\Ports\Meddrive Printer PORT
-    OutputPath      = "C:\Users\...\PDF\saida.pdf"
+    OutputPath      = "C:\Users\...\PDF"
+    OutputBaseName  = "relatorio"
     GhostscriptPath = "C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe"
 ```
 
@@ -112,31 +165,31 @@ HKLM\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Ver
 
 ---
 
-## 5. Decisões Técnicas
+## 6. Decisões Técnicas
 
-### 5.1 Print Monitor 2, não Monitor 1
+### 6.1 Print Monitor 2, não Monitor 1
 
 A DLL exporta `InitializePrintMonitor2` e implementa a struct `MONITOR2` (winsplp.h). A versão 1 (`InitializePrintMonitor`) é legada e não suporta o contexto de monitor (`hMonitor`) necessário para múltiplas instâncias simultâneas. O Monitor 2 é o padrão desde Windows 2000 e é o que o spooler moderno espera.
 
-### 5.2 PSCRIPT5 como driver, não MS PS Class Driver
+### 6.2 PSCRIPT5 como driver, não MS PS Class Driver
 
 O Windows 10/11 bloqueia drivers "inbox" da Microsoft (Microsoft PS Class Driver, Microsoft Print to PDF, Microsoft XPS Document Writer) quando usados com port monitors de terceiros. O bloqueio aparece como Event ID 242 no log `Microsoft-Windows-PrintService/Admin` e o spooler recusa o job silenciosamente.
 
 A solução foi registrar um driver **próprio** (`Meddrive Printer DRIVER`) que aponta para os arquivos do PSCRIPT5 já presentes em System32 (`PSCRIPT5.DLL`, `PS5UI.DLL`, `PSCRIPT.NTF`, `PSCRIPT.HLP`). Como o nome do driver não é "Microsoft PS Class Driver", o bloqueio não se aplica. O registro é feito diretamente no registry, sem INF ou assinatura digital.
 
-### 5.3 Registro do driver via registry, não via AddPrinterDriver
+### 6.3 Registro do driver via registry, não via AddPrinterDriver
 
 `AddPrinterDriver` com um INF sem assinatura é bloqueado pelo Windows 10/11 (política de assinatura de driver). Escrever as chaves diretamente em `HKLM\...\Drivers\Version-3\` contorna essa validação — o spooler lê as chaves no próximo restart sem exigir que o INF seja assinado. O PPD precisa estar copiado para `drivers\x64\3\` **antes** do restart para que o PSCRIPT5 o encontre ao inicializar.
 
-### 5.4 AddPortExW em vez de AddPort
+### 6.4 AddPortExW em vez de AddPort
 
 `AddPort` falha para monitores customizados no Windows 10/11 porque o cliente RPC não consegue validar ponteiros de estruturas do monitor de terceiros (retorna `ERROR_INVALID_DATA = 13`). `AddPortExW` usa um caminho diferente no spooler — chama `pfnAddPortEx` diretamente no monitor — e não passa por essa validação. O `install.ps1` usa P/Invoke direto em `winspool.drv` para chamar `AddPortExW`. A DLL implementa `Monitor_AddPortEx` (retorna `TRUE`) para satisfazer o spooler.
 
-### 5.5 Restart-Service Spooler, não Start-Sleep
+### 6.5 Restart-Service Spooler, não Start-Sleep
 
 O spooler enumera drivers registrados via registry **somente na inicialização**. Gravar as chaves com o spooler em execução não faz o driver aparecer — é preciso reiniciar o serviço. Um simples `Start-Sleep` não resolve. O `install.ps1` usa `Restart-Service -Name Spooler -Force` e só continua após confirmar que o driver está visível via `Get-PrinterDriver`.
 
-### 5.6 PPD sem *Protocols: PJL e sem *?TTRasterizer query
+### 6.6 PPD sem *Protocols: PJL e sem *?TTRasterizer query
 
 O PSCRIPT5 usa o PPD para saber as capacidades da impressora. Duas entradas causavam travamento completo:
 
@@ -145,7 +198,7 @@ O PSCRIPT5 usa o PPD para saber as capacidades da impressora. Duas entradas caus
 
 Ambas foram removidas. O `*TTRasterizer: Type42` permanece como declaração estática (sem envio ao dispositivo).
 
-### 5.7 Instalador .exe com NSIS e elevação UAC
+### 6.7 Instalador .exe com NSIS e elevação UAC
 
 As máquinas alvo são de **terceiros** — não há controle sobre configurações de boot (`bcdedit /set testsigning on` é inviável). A instalação exige admin para escrever em `HKLM` e copiar a DLL para `System32`. A solução padrão para esse cenário é um instalador `.exe` com manifesto de UAC (`RequestExecutionLevel admin`), que exibe o prompt "Deseja permitir alterações?" e ganha elevação. O usuário só precisa de uma conta com privilégio de administrador local — padrão em PCs domésticos. O NSIS gera o executável a partir do Linux via `makensis`.
 
@@ -159,7 +212,7 @@ $TEMP\MeddrivePrinter\
 ```
 Isso é necessário porque `install.ps1` localiza a DLL com `$ScriptDir\..\meddrivemon.dll`. Se todos os arquivos fossem extraídos no mesmo diretório, o script buscaria a DLL um nível acima do `$TEMP` e falharia.
 
-### 5.8 Limitação aceita: Edge Ctrl+P não mostra preview
+### 6.8 Limitação aceita: Edge Ctrl+P não mostra preview
 
 O diálogo nativo do Edge (`Ctrl+P`) usa a Print Ticket API (XPS) e chama `PTGetPrintCapabilities` antes de mostrar o preview. Para o nosso driver, essa chamada retorna `E_FAIL (0x80004005)`. O PSCRIPT5 com PPD não gera o XML de PrintCapabilities para o caminho XPS sem mapeamentos `MSPrintSchemaKeywordMap` — e mesmo com esses mapeamentos, o resultado pode não mudar porque o PSCRIPT5 com PPD está na fronteira do suporte ao Print Schema.
 
@@ -169,7 +222,7 @@ A correção definitiva seria um driver V4 próprio com pipeline XPS→PS (`MSxp
 
 ---
 
-## 6. Bugs Resolvidos
+## 7. Bugs Resolvidos
 
 | Erro | Causa raiz | Correção |
 |---|---|---|
@@ -181,7 +234,7 @@ A correção definitiva seria um driver V4 próprio com pipeline XPS→PS (`MSxp
 
 ---
 
-## 7. Estrutura do Projeto
+## 8. Estrutura do Projeto
 
 ```
 med-driver/
@@ -206,7 +259,7 @@ med-driver/
 
 ---
 
-## 8. Build
+## 9. Build
 
 ### Pré-requisitos (Linux)
 
@@ -232,7 +285,7 @@ x86_64-w64-mingw32-gcc -shared -static-libgcc -lkernel32 -ladvapi32
 
 ---
 
-## 9. Instalação (fluxo real)
+## 10. Instalação (fluxo real)
 
 O `MeddrivePrinter-Setup.exe` executa os seguintes passos via `install.ps1`:
 
@@ -250,7 +303,7 @@ O `MeddrivePrinter-Setup.exe` executa os seguintes passos via `install.ps1`:
 
 ---
 
-## 10. Diagnóstico
+## 11. Diagnóstico
 
 ### Log da DLL
 
@@ -292,7 +345,7 @@ Get-Printer -Name "Meddrive Printer" | Select-Object Name, DriverName, PortName
 
 ---
 
-## 11. Compatibilidade
+## 12. Compatibilidade
 
 | Sistema | Suporte |
 |---|---|

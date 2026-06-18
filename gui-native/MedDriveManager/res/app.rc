@@ -2,23 +2,26 @@
 #include "resource.h"
 
 
-IDD_ADD_PRINTER DIALOGEX 0, 0, 310, 108
+IDD_ADD_PRINTER DIALOGEX 0, 0, 310, 128
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Adicionar Impressora"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Nome:",          IDC_STATIC,    10,  12, 64, 10
-    EDITTEXT        IDC_EDIT_NAME,                   80,  10, 220, 14, ES_AUTOHSCROLL
+    LTEXT           "Porta:",              IDC_STATIC,       10,  12, 75, 10
+    EDITTEXT        IDC_EDIT_PORT,                           88,  10, 212, 14, ES_AUTOHSCROLL
 
-    LTEXT           "Porta:",         IDC_STATIC,    10,  32, 64, 10
-    EDITTEXT        IDC_EDIT_PORT,                   80,  30, 220, 14, ES_AUTOHSCROLL
+    LTEXT           "Nome da impressora:", IDC_STATIC,       10,  32, 75, 10
+    EDITTEXT        IDC_EDIT_NAME,                           88,  30, 212, 14, ES_AUTOHSCROLL
 
-    LTEXT           "Pasta destino:", IDC_STATIC,    10,  52, 64, 10
-    EDITTEXT        IDC_EDIT_PATH,                   80,  50, 192, 14, ES_AUTOHSCROLL
-    PUSHBUTTON      "...",            IDC_BTN_BROWSE,276,  50,  24, 14
+    LTEXT           "Nome do arquivo:",    IDC_STATIC,       10,  52, 75, 10
+    EDITTEXT        IDC_EDIT_BASENAME,                       88,  50, 212, 14, ES_AUTOHSCROLL
 
-    DEFPUSHBUTTON   "OK",             IDOK,          196,  86,  50, 14
-    PUSHBUTTON      "Cancelar",       IDCANCEL,      250,  86,  50, 14
+    LTEXT           "Pasta destino:",      IDC_STATIC,       10,  72, 75, 10
+    EDITTEXT        IDC_EDIT_PATH,                           88,  70, 184, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...",                 IDC_BTN_BROWSE,  276,  70,  24, 14
+
+    DEFPUSHBUTTON   "OK",                  IDOK,            196, 106,  50, 14
+    PUSHBUTTON      "Cancelar",            IDCANCEL,        250, 106,  50, 14
 END
 
 IDD_PROGRESS DIALOGEX 0, 0, 420, 230
