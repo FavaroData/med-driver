@@ -3,21 +3,10 @@
 #include <stdio.h>
 #include "dlg_progress.h"
 #include "resource.h"
+#include "ui/theme.h"
 
-#define WM_APP_PS_OUTPUT  (WM_APP + 1)  /* lParam = heap wchar_t*, dialog free */
-#define WM_APP_PS_DONE    (WM_APP + 2)  /* wParam = exit code                  */
-
-/* Cores escuras */
-#define CLR_BG         RGB(0x1E,0x1E,0x1E)
-#define CLR_EDIT_BG    RGB(0x16,0x16,0x16)
-#define CLR_TEXT       RGB(0xD4,0xD4,0xD4)
-#define CLR_BTN_BG     RGB(0x3C,0x3C,0x3C)
-#define CLR_BTN_HOV    RGB(0x50,0x50,0x50)
-#define CLR_BTN_PRS    RGB(0x28,0x28,0x28)
-#define CLR_BTN_BORDER RGB(0x60,0x60,0x60)
-#define CLR_BTN_TEXT   RGB(0xD4,0xD4,0xD4)
-#define CLR_BTN_DIS    RGB(0x55,0x55,0x55)
-#define CLR_BTN_DISTXT RGB(0x50,0x50,0x50)
+#define WM_APP_PS_OUTPUT  (WM_APP + 1)
+#define WM_APP_PS_DONE    (WM_APP + 2)
 
 typedef struct {
     HWND    hwnd;
@@ -28,26 +17,9 @@ typedef struct {
     BOOL    removeMode;
 } ProgressParams;
 
-static HBRUSH s_hbrBg;
-static HBRUSH s_hbrEdit;
-static HFONT  s_hFont;
 static BOOL   s_done;
 static BOOL   s_success;
 static BOOL   s_removeMode;
-
-/* ─── Utilitarios ─────────────────────────────────────────────────────── */
-
-static HFONT make_font(int ptSize) {
-    HDC dc = GetDC(NULL);
-    HFONT f = CreateFontW(
-        -MulDiv(ptSize, GetDeviceCaps(dc, LOGPIXELSY), 72),
-        0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-        CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    ReleaseDC(NULL, dc);
-    return f;
-}
 
 static void append_text(HWND hEdit, const wchar_t *text) {
     int len = GetWindowTextLengthW(hEdit);
@@ -152,30 +124,23 @@ static DWORD WINAPI ps_thread_remove(LPVOID param) {
 static void draw_close_btn(DRAWITEMSTRUCT *di) {
     HDC  dc  = di->hDC;
     RECT rc  = di->rcItem;
-    BOOL dis = (di->itemState & ODS_DISABLED) != 0;
+    BOOL d   = (di->itemState & ODS_DISABLED) != 0;
     BOOL hot = (di->itemState & ODS_HOTLIGHT) != 0;
     BOOL sel = (di->itemState & ODS_SELECTED) != 0;
 
-    COLORREF bg = dis ? CLR_BG :
-                  sel ? CLR_BTN_PRS :
-                  hot ? CLR_BTN_HOV : CLR_BTN_BG;
+    COLORREF bg = d   ? CLR_BTN_SECONDARY :
+                  sel ? CLR_CARD          :
+                  hot ? CLR_BTN_SEC_HOV   : CLR_BTN_SECONDARY;
+
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);
     DeleteObject(hbr);
 
-    HPEN hpen = CreatePen(PS_SOLID, 1, dis ? RGB(0x40,0x40,0x40) : CLR_BTN_BORDER);
-    HPEN opn  = (HPEN)SelectObject(dc, hpen);
-    HBRUSH obr = (HBRUSH)SelectObject(dc, GetStockObject(NULL_BRUSH));
-    Rectangle(dc, rc.left, rc.top, rc.right, rc.bottom);
-    SelectObject(dc, opn);
-    SelectObject(dc, obr);
-    DeleteObject(hpen);
-
     wchar_t txt[64];
     GetWindowTextW(di->hwndItem, txt, 64);
-    SetTextColor(dc, dis ? CLR_BTN_DISTXT : CLR_BTN_TEXT);
+    SetTextColor(dc, d ? CLR_TEXT_DISABLED : CLR_TEXT_PRIMARY);
     SetBkMode(dc, TRANSPARENT);
-    HFONT of = (HFONT)SelectObject(dc, s_hFont);
+    HFONT of = (HFONT)SelectObject(dc, g_fontContent);
     DrawTextW(dc, txt, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     SelectObject(dc, of);
 }
@@ -185,19 +150,15 @@ static void draw_close_btn(DRAWITEMSTRUCT *di) {
 static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
     case WM_INITDIALOG: {
-        s_done       = FALSE;
-        s_success    = FALSE;
+        s_done    = FALSE;
+        s_success = FALSE;
 
-        s_hbrBg   = CreateSolidBrush(CLR_BG);
-        s_hbrEdit = CreateSolidBrush(CLR_EDIT_BG);
-        s_hFont   = make_font(9);
-
-        SendDlgItemMessageW(hwnd, IDC_EDIT_OUTPUT,        WM_SETFONT, (WPARAM)s_hFont, TRUE);
-        SendDlgItemMessageW(hwnd, IDC_BTN_CLOSE_PROGRESS, WM_SETFONT, (WPARAM)s_hFont, TRUE);
+        SendDlgItemMessageW(hwnd, IDC_EDIT_OUTPUT,        WM_SETFONT, (WPARAM)g_fontContent, TRUE);
+        SendDlgItemMessageW(hwnd, IDC_BTN_CLOSE_PROGRESS, WM_SETFONT, (WPARAM)g_fontContent, TRUE);
 
         HWND hBtn = GetDlgItem(hwnd, IDC_BTN_CLOSE_PROGRESS);
         LONG_PTR style = GetWindowLongPtrW(hBtn, GWL_STYLE);
-        SetWindowLongPtrW(hBtn, GWL_STYLE, style | BS_OWNERDRAW);
+        SetWindowLongPtrW(hBtn, GWL_STYLE, (style & ~0xFL) | BS_OWNERDRAW);
         EnableWindow(hBtn, FALSE);
 
         ProgressParams *p = (ProgressParams *)lp;
@@ -211,13 +172,17 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     }
 
     case WM_CTLCOLORDLG:
-        return (INT_PTR)s_hbrBg;
+        return (INT_PTR)g_hbrPrimary;
 
     case WM_CTLCOLOREDIT:
+        SetTextColor((HDC)wp, CLR_TEXT_PRIMARY);
+        SetBkColor((HDC)wp,   CLR_BG_SECONDARY);
+        return (INT_PTR)g_hbrSecondary;
+
     case WM_CTLCOLORSTATIC:
-        SetTextColor((HDC)wp, CLR_TEXT);
-        SetBkColor((HDC)wp, CLR_EDIT_BG);
-        return (INT_PTR)s_hbrEdit;
+        SetTextColor((HDC)wp, CLR_TEXT_SECONDARY);
+        SetBkMode((HDC)wp, TRANSPARENT);
+        return (INT_PTR)g_hbrPrimary;
 
     case WM_DRAWITEM:
         draw_close_btn((DRAWITEMSTRUCT *)lp);
@@ -262,11 +227,6 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             EndDialog(hwnd, s_success ? IDOK : IDCANCEL);
         return 0;
 
-    case WM_DESTROY:
-        if (s_hbrBg)   { DeleteObject(s_hbrBg);   s_hbrBg   = NULL; }
-        if (s_hbrEdit) { DeleteObject(s_hbrEdit);  s_hbrEdit = NULL; }
-        if (s_hFont)   { DeleteObject(s_hFont);    s_hFont   = NULL; }
-        return 0;
     }
     return FALSE;
 }

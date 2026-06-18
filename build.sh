@@ -22,11 +22,17 @@ $MINGW-gcc -shared \
 echo "  -> $PROJ_ROOT/meddrivemon.dll"
 
 echo "=== Compilando fontes C ==="
-$MINGW-gcc $DEFS $INC -c "$SRC/main.c"          -o "$TMP/main.o"
-$MINGW-gcc $DEFS $INC -c "$SRC/mainwnd.c"        -o "$TMP/mainwnd.o"
-$MINGW-gcc $DEFS $INC -c "$SRC/dlg_add.c"        -o "$TMP/dlg_add.o"
-$MINGW-gcc $DEFS $INC -c "$SRC/dlg_progress.c"   -o "$TMP/dlg_progress.o"
-$MINGW-gcc $DEFS $INC -c "$SRC/store.c"          -o "$TMP/store.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/main.c"               -o "$TMP/main.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/mainwnd.c"             -o "$TMP/mainwnd.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/dlg_add.c"             -o "$TMP/dlg_add.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/dlg_progress.c"        -o "$TMP/dlg_progress.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/store.c"               -o "$TMP/store.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/ui/theme.c"            -o "$TMP/ui_theme.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/ui/titlebar.c"         -o "$TMP/ui_titlebar.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/ui/navbar.c"           -o "$TMP/ui_navbar.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/ui/listview.c"         -o "$TMP/ui_listview.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/ui/statusbar.c"        -o "$TMP/ui_statusbar.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/ui/buttons.c"          -o "$TMP/ui_buttons.o"
 
 echo "=== Compilando recursos ==="
 $MINGW-windres --codepage 65001 -I"$RES" "$RES/app.rc" -o "$TMP/app_res.o"
@@ -35,8 +41,11 @@ echo "=== Linkando MedDriveManager.exe ==="
 mkdir -p "$OUT"
 $MINGW-gcc -mwindows \
     "$TMP/main.o" "$TMP/mainwnd.o" "$TMP/dlg_add.o" \
-    "$TMP/dlg_progress.o" "$TMP/store.o" "$TMP/app_res.o" \
-    -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool \
+    "$TMP/dlg_progress.o" "$TMP/store.o" \
+    "$TMP/ui_theme.o" "$TMP/ui_titlebar.o" "$TMP/ui_navbar.o" \
+    "$TMP/ui_listview.o" "$TMP/ui_statusbar.o" "$TMP/ui_buttons.o" \
+    "$TMP/app_res.o" \
+    -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool -ldwmapi \
     -o "$OUT/MedDriveManager.exe"
 
 echo "  -> $OUT/MedDriveManager.exe"

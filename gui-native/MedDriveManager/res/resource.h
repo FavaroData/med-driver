@@ -22,3 +22,18 @@
 #define IDD_PROGRESS              500
 #define IDC_EDIT_OUTPUT           501
 #define IDC_BTN_CLOSE_PROGRESS    502
+
+/* ── Ícones (Q6) ─────────────────────────────────────────────────── */
+#define IDI_ICO_ADD20       601
+#define IDI_ICO_DELETE20    602
+#define IDI_ICO_SYNC20      603
+#define IDI_ICO_PRINTER20   604
+#define IDI_ICO_PRINTER16   605
+#define IDI_ICO_PRINTER48   606
+#define IDI_ICO_SETTINGS20  607
+#define IDI_ICO_FOLDER20    608
+#define IDI_ICO_FOLDER16    609
+#define IDI_ICO_DOCUMENT16  610
+#define IDI_ICO_INFO16      611
+#define IDI_ICO_PLUG16      612
+#define IDI_ICO_APP         613

@@ -6,6 +6,7 @@
 #include <wctype.h>
 #include "dlg_add.h"
 #include "resource.h"
+#include "ui/theme.h"
 
 static PrinterEntry *s_entry;
 
@@ -165,14 +166,67 @@ static void update_port_preview(HWND hwnd) {
     SetDlgItemTextW(hwnd, IDC_EDIT_PORT, port);
 }
 
+static void make_btn_ownerdraw(HWND hwnd, int id) {
+    HWND hBtn = GetDlgItem(hwnd, id);
+    LONG_PTR s = GetWindowLongPtrW(hBtn, GWL_STYLE);
+    SetWindowLongPtrW(hBtn, GWL_STYLE, (s & ~0xFL) | BS_OWNERDRAW);
+    SendMessageW(hBtn, WM_SETFONT, (WPARAM)g_fontContent, TRUE);
+}
+
+static void draw_dlg_btn(DRAWITEMSTRUCT *dis, BOOL isPrimary) {
+    HDC  dc  = dis->hDC;
+    RECT rc  = dis->rcItem;
+    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0;
+    BOOL sel = (dis->itemState & ODS_SELECTED) != 0;
+
+    COLORREF bg = isPrimary
+        ? (sel ? CLR_ACCENT       : hot ? CLR_BTN_PRIMARY_HOV : CLR_BTN_PRIMARY)
+        : (sel ? CLR_CARD         : hot ? CLR_BTN_SEC_HOV     : CLR_BTN_SECONDARY);
+
+    HBRUSH hbr = CreateSolidBrush(bg);
+    FillRect(dc, &rc, hbr);
+    DeleteObject(hbr);
+
+    wchar_t txt[64]; GetWindowTextW(dis->hwndItem, txt, 64);
+    SetTextColor(dc, CLR_TEXT_PRIMARY);
+    SetBkMode(dc, TRANSPARENT);
+    HFONT of = (HFONT)SelectObject(dc, g_fontContent);
+    DrawTextW(dc, txt, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, of);
+}
+
 static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     (void)lp;
     switch (msg) {
     case WM_INITDIALOG:
         SendDlgItemMessageW(hwnd, IDC_EDIT_PORT, EM_SETREADONLY, TRUE, 0);
+        make_btn_ownerdraw(hwnd, IDOK);
+        make_btn_ownerdraw(hwnd, IDCANCEL);
+        make_btn_ownerdraw(hwnd, IDC_BTN_BROWSE);
+        make_btn_ownerdraw(hwnd, IDC_BTN_TOKEN);
         update_port_preview(hwnd);
         update_preview(hwnd);
         return TRUE;
+
+    case WM_CTLCOLORDLG:
+        return (INT_PTR)g_hbrPrimary;
+
+    case WM_CTLCOLOREDIT:
+        SetTextColor((HDC)wp, CLR_TEXT_PRIMARY);
+        SetBkColor((HDC)wp,   CLR_CARD);
+        return (INT_PTR)g_hbrCard;
+
+    case WM_CTLCOLORSTATIC:
+        SetTextColor((HDC)wp, CLR_TEXT_SECONDARY);
+        SetBkMode((HDC)wp, TRANSPARENT);
+        return (INT_PTR)g_hbrPrimary;
+
+    case WM_DRAWITEM: {
+        DRAWITEMSTRUCT *di = (DRAWITEMSTRUCT *)lp;
+        BOOL isPrimary = (di->CtlID == IDOK || di->CtlID == IDC_BTN_BROWSE);
+        draw_dlg_btn(di, isPrimary);
+        return TRUE;
+    }
 
     case WM_COMMAND:
         if (HIWORD(wp) == EN_CHANGE && LOWORD(wp) == IDC_EDIT_NAME) {
