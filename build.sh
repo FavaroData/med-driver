@@ -29,7 +29,7 @@ $MINGW-gcc $DEFS $INC -c "$SRC/dlg_progress.c"   -o "$TMP/dlg_progress.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/store.c"          -o "$TMP/store.o"
 
 echo "=== Compilando recursos ==="
-$MINGW-windres -I"$RES" "$RES/app.rc" -o "$TMP/app_res.o"
+$MINGW-windres --codepage 65001 -I"$RES" "$RES/app.rc" -o "$TMP/app_res.o"
 
 echo "=== Linkando MedDriveManager.exe ==="
 mkdir -p "$OUT"

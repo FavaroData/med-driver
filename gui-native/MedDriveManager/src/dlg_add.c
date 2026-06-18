@@ -100,6 +100,12 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 SetFocus(GetDlgItem(hwnd, IDC_EDIT_BASENAME));
                 return TRUE;
             }
+            if (s_entry->outputPath[0] == L'\0') {
+                MessageBoxW(hwnd, L"A pasta de destino não pode estar vazia.",
+                            L"Campo obrigatório", MB_ICONWARNING | MB_OK);
+                SetFocus(GetDlgItem(hwnd, IDC_EDIT_PATH));
+                return TRUE;
+            }
             /* Bloqueia caracteres inválidos em nomes de arquivo do Windows */
             {
                 static const wchar_t invalid[] = L"\\/:*?\"<>|";

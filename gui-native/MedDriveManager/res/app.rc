@@ -2,26 +2,36 @@
 #include "resource.h"
 
 
-IDD_ADD_PRINTER DIALOGEX 0, 0, 310, 128
+IDD_ADD_PRINTER DIALOGEX 0, 0, 320, 192
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Adicionar Impressora"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    LTEXT           "Porta:",              IDC_STATIC,       10,  12, 75, 10
-    EDITTEXT        IDC_EDIT_PORT,                           88,  10, 212, 14, ES_AUTOHSCROLL
+    /* ── Seção: Identificação ── */
+    LTEXT           "IDENTIFICAÇÃO",       IDC_STATIC,       12,  10, 296,  9
 
-    LTEXT           "Nome da impressora:", IDC_STATIC,       10,  32, 75, 10
-    EDITTEXT        IDC_EDIT_NAME,                           88,  30, 212, 14, ES_AUTOHSCROLL
+    LTEXT           "Nome da impressora:", IDC_STATIC,       12,  24, 296,  9
+    EDITTEXT        IDC_EDIT_NAME,                           12,  34, 296,  14, ES_AUTOHSCROLL
 
-    LTEXT           "Nome do arquivo:",    IDC_STATIC,       10,  52, 75, 10
-    EDITTEXT        IDC_EDIT_BASENAME,                       88,  50, 212, 14, ES_AUTOHSCROLL
+    LTEXT           "Porta (gerada automaticamente):", IDC_STATIC, 12, 54, 296, 9
+    EDITTEXT        IDC_EDIT_PORT,                           12,  64, 296,  14, ES_AUTOHSCROLL | ES_READONLY
 
-    LTEXT           "Pasta destino:",      IDC_STATIC,       10,  72, 75, 10
-    EDITTEXT        IDC_EDIT_PATH,                           88,  70, 184, 14, ES_AUTOHSCROLL
-    PUSHBUTTON      "...",                 IDC_BTN_BROWSE,  276,  70,  24, 14
+    /* ── Separador visual (linha fina via CONTROL estático) ── */
+    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ, 12, 86, 296, 1
 
-    DEFPUSHBUTTON   "OK",                  IDOK,            196, 106,  50, 14
-    PUSHBUTTON      "Cancelar",            IDCANCEL,        250, 106,  50, 14
+    /* ── Seção: Saída ── */
+    LTEXT           "SAÍDA",               IDC_STATIC,       12,  93, 296,  9
+
+    LTEXT           "Nome base do arquivo (sem extensão):", IDC_STATIC, 12, 107, 296, 9
+    EDITTEXT        IDC_EDIT_BASENAME,                       12, 117, 296,  14, ES_AUTOHSCROLL
+
+    LTEXT           "Pasta de destino:",   IDC_STATIC,       12, 137, 296,  9
+    EDITTEXT        IDC_EDIT_PATH,                           12, 147, 262,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...",                 IDC_BTN_BROWSE,  278, 147,  30,  14
+
+    /* ── Rodapé ── */
+    PUSHBUTTON      "Cancelar",            IDCANCEL,        198, 172,  56,  14
+    DEFPUSHBUTTON   "Adicionar",           IDOK,            258, 172,  56,  14
 END
 
 IDD_PROGRESS DIALOGEX 0, 0, 420, 230

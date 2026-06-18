@@ -90,16 +90,17 @@ static void list_refresh(void) {
         LVITEMW lvi = {0};
         lvi.mask    = LVIF_TEXT;
         lvi.iItem   = i;
-        lvi.pszText = g_printers[i].name;
+        lvi.pszText = g_printers[i].portName;
         ListView_InsertItem(g_hwndList, &lvi);
+
+        ListView_SetItemText(g_hwndList, i, 1, g_printers[i].name);
 
         /* Coluna "Nome do arquivo": exibe o padrão gerado na impressão */
         wchar_t filePattern[PRINTER_BASENAME_MAX + 8] = {0};
         if (g_printers[i].outputBaseName[0])
             _snwprintf_s(filePattern, PRINTER_BASENAME_MAX + 8, _TRUNCATE,
                          L"%s-N.pdf", g_printers[i].outputBaseName);
-        ListView_SetItemText(g_hwndList, i, 1, filePattern);
-        ListView_SetItemText(g_hwndList, i, 2, g_printers[i].portName);
+        ListView_SetItemText(g_hwndList, i, 2, filePattern);
         ListView_SetItemText(g_hwndList, i, 3, g_printers[i].outputPath);
     }
     update_status();
@@ -239,11 +240,11 @@ static void on_create(HWND hwnd) {
 
     LVCOLUMNW col = {0};
     col.mask = LVCF_TEXT | LVCF_WIDTH;
-    col.cx = 180; col.pszText = L"Impressora";
-    ListView_InsertColumn(g_hwndList, 0, &col);
-    col.cx = 160; col.pszText = L"Nome do arquivo";
-    ListView_InsertColumn(g_hwndList, 1, &col);
     col.cx = 150; col.pszText = L"Porta";
+    ListView_InsertColumn(g_hwndList, 0, &col);
+    col.cx = 180; col.pszText = L"Impressora";
+    ListView_InsertColumn(g_hwndList, 1, &col);
+    col.cx = 160; col.pszText = L"Nome do arquivo";
     ListView_InsertColumn(g_hwndList, 2, &col);
     col.cx = 270; col.pszText = L"Pasta de destino";
     ListView_InsertColumn(g_hwndList, 3, &col);
