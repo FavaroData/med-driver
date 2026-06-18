@@ -14,6 +14,8 @@
 #define IDC_EDIT_PATH       203
 #define IDC_BTN_BROWSE      204
 #define IDC_EDIT_BASENAME   205
+#define IDC_BTN_TOKEN       206
+#define IDC_LBL_PREVIEW     207
 
 #define IDM_EXIT            401
 

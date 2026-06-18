@@ -205,7 +205,8 @@ if ($success) {
     Log "Instalação concluída!"
     Log "  Impressora : $PrinterName"
     Log "  Porta      : $PortName"
-    Log "  Saída      : $OutputPath\$OutputBaseName-N.pdf"
+    Log "  Template   : $OutputBaseName"
+    Log "  Saída      : $OutputPath\"
     Log "  Ghostscript: $GhostscriptPath"
 } else {
     Log "ERRO: falha ao registrar a impressora '$PrinterName'."
