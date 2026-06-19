@@ -3,8 +3,8 @@
 #include <windows.h>
 #include "theme.h"
 
-/* Pinta a navbar horizontal (2 abas: Impressoras / Configurações). */
+/* Pinta a navbar horizontal (3 abas: Perfis / Impressoras / Configurações). */
 void navbar_paint(HDC dc, int clientW, int activeTab);
 
-/* Retorna o índice da aba clicada (0 ou 1), ou -1 se nenhuma. */
+/* Retorna o índice da aba clicada (0, 1 ou 2), ou -1 se nenhuma. */
 int navbar_hittest(int x, int y);

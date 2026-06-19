@@ -69,6 +69,7 @@ Function PgPaths
     StrCpy $R4 "$R4$\r$\nAplicativo de gerenciamento:$\r$\n"
     StrCpy $R4 "$R4  $R3\MedDriveManager.exe$\r$\n"
     StrCpy $R4 "$R4  $R3\add-printer.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\create-profile.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\remove-printer.ps1$\r$\n"
     StrCpy $R4 "$R4$\r$\nGhostscript (motor PDF):$\r$\n"
     StrCpy $R4 "$R4  $R3\Ghostscript\"
@@ -97,6 +98,7 @@ Section "Instalar Meddrive Printer" SecInstall
     File "MEDDRIVE.PPD"
     File "install.ps1"
     File "add-printer.ps1"
+    File "create-profile.ps1"
     File "remove-printer.ps1"
     File "x64\Debug\MedDriveManager.exe"
 
@@ -120,6 +122,7 @@ Section "Instalar Meddrive Printer" SecInstall
     ; limpa temporários (arquivos já copiados para ProgramData pelo install.ps1)
     Delete "$INSTDIR\installer\install.ps1"
     Delete "$INSTDIR\installer\add-printer.ps1"
+    Delete "$INSTDIR\installer\create-profile.ps1"
     Delete "$INSTDIR\installer\remove-printer.ps1"
     Delete "$INSTDIR\installer\MedDriveManager.exe"
     Delete "$INSTDIR\installer\MEDDRIVE.PPD"

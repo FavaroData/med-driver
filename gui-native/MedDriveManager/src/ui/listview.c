@@ -9,13 +9,20 @@ int g_hoverRow = -1;
 
 /* ── Colunas ─────────────────────────────────────────────────────────── */
 #define COL_COUNT 4
-static const int COL_W[COL_COUNT] = {150, 200, 185, 377}; /* soma = 912 */
-static const HICON *COL_ICO[COL_COUNT];  /* preenchido em listview_create */
+static const int COL_W_PRINTERS[COL_COUNT] = {150, 200, 185, 377}; /* soma = 912 */
+static const int COL_W_PROFILES[COL_COUNT]  = {165, 200, 390, 157}; /* soma = 912 */
+
+/* Arrays de ícones por listview — preenchidos em listview_create / listview_create_profile */
+static const HICON *s_colIcoPrinters[COL_COUNT];
+static const HICON *s_colIcoProfiles[COL_COUNT];
 
 /* ── SubclassProc do Header: fundo CLR_CARD + ícones ─────────────────── */
+/* data = ponteiro para array const HICON *[COL_COUNT] específico deste header */
 static LRESULT CALLBACK HeaderSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
                                         UINT_PTR uid, DWORD_PTR data) {
-    (void)uid; (void)data;
+    (void)uid;
+    const HICON **colIco = (const HICON **)data;
+
     if (msg == WM_ERASEBKGND) {
         RECT rc; GetClientRect(hwnd, &rc);
         FillRect((HDC)wp, &rc, g_hbrCard);
@@ -40,10 +47,10 @@ static LRESULT CALLBACK HeaderSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
             SendMessageW(hwnd, HDM_GETITEM, (WPARAM)i, (LPARAM)&hdi);
 
             /* Ícone 16px */
-            if (COL_ICO[i] && *COL_ICO[i]) {
+            if (colIco && colIco[i] && *colIco[i]) {
                 int iy = (ir.bottom - ir.top - 16) / 2;
                 DrawIconEx(dc, ir.left + 8, ir.top + iy,
-                           *COL_ICO[i], 16, 16, 0, NULL, DI_NORMAL);
+                           *colIco[i], 16, 16, 0, NULL, DI_NORMAL);
             }
             int textX = ir.left + 30;
 
@@ -97,7 +104,7 @@ static LRESULT CALLBACK ListSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         if (newHov != g_hoverRow) {
             int old = g_hoverRow;
             g_hoverRow = newHov;
-            if (old >= 0)  ListView_RedrawItems(hwnd, old,  old);
+            if (old >= 0)    ListView_RedrawItems(hwnd, old,    old);
             if (newHov >= 0) ListView_RedrawItems(hwnd, newHov, newHov);
         }
         return DefSubclassProc(hwnd, msg, wp, lp);
@@ -111,15 +118,18 @@ static LRESULT CALLBACK ListSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-/* ── API pública ─────────────────────────────────────────────────────── */
-
-HWND listview_create(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int h) {
+/* ── Helper interno de criação ───────────────────────────────────────── */
+static HWND create_lv(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int h,
+                       int ctlId,
+                       const wchar_t *col0, const wchar_t *col1,
+                       const wchar_t *col2, const wchar_t *col3,
+                       const int *colW, const HICON **colIcoArr) {
     HWND hwndList = CreateWindowExW(
         0, WC_LISTVIEW, NULL,
         WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_SINGLESEL |
         LVS_SHOWSELALWAYS | LVS_OWNERDRAWFIXED,
         x, y, w, h,
-        hwndParent, (HMENU)(UINT_PTR)IDC_PRINTER_LIST, hInst, NULL);
+        hwndParent, (HMENU)(UINT_PTR)ctlId, hInst, NULL);
 
     ListView_SetExtendedListViewStyle(hwndList,
         LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
@@ -128,30 +138,44 @@ HWND listview_create(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int 
     ListView_SetTextColor(hwndList,   CLR_TEXT_ROW);
     SendMessageW(hwndList, WM_SETFONT, (WPARAM)g_fontContent, TRUE);
 
-    /* Colunas */
     LVCOLUMNW col = {0};
     col.mask = LVCF_TEXT | LVCF_WIDTH;
-    col.cx = COL_W[0]; col.pszText = L"Porta";
-    ListView_InsertColumn(hwndList, 0, &col);
-    col.cx = COL_W[1]; col.pszText = L"Impressora";
-    ListView_InsertColumn(hwndList, 1, &col);
-    col.cx = COL_W[2]; col.pszText = L"Nome do arquivo";
-    ListView_InsertColumn(hwndList, 2, &col);
-    col.cx = COL_W[3]; col.pszText = L"Pasta de destino";
-    ListView_InsertColumn(hwndList, 3, &col);
+    col.cx = colW[0]; col.pszText = (wchar_t *)col0; ListView_InsertColumn(hwndList, 0, &col);
+    col.cx = colW[1]; col.pszText = (wchar_t *)col1; ListView_InsertColumn(hwndList, 1, &col);
+    col.cx = colW[2]; col.pszText = (wchar_t *)col2; ListView_InsertColumn(hwndList, 2, &col);
+    col.cx = colW[3]; col.pszText = (wchar_t *)col3; ListView_InsertColumn(hwndList, 3, &col);
 
-    /* Ponteiros para ícones dos cabeçalhos (preenchidos aqui porque theme já foi init) */
-    COL_ICO[0] = &g_icoPlug16;
-    COL_ICO[1] = &g_icoPrinter16;
-    COL_ICO[2] = &g_icoDocument16;
-    COL_ICO[3] = &g_icoFolder16;
-
-    /* Subclass header e listview */
     HWND hwndHdr = ListView_GetHeader(hwndList);
-    SetWindowSubclass(hwndHdr, HeaderSubclass, 1, 0);
+    SetWindowSubclass(hwndHdr, HeaderSubclass, 1, (DWORD_PTR)colIcoArr);
     SetWindowSubclass(hwndList, ListSubclass,  2, 0);
 
     return hwndList;
+}
+
+/* ── API pública ─────────────────────────────────────────────────────── */
+
+HWND listview_create(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int h) {
+    s_colIcoPrinters[0] = &g_icoPlug16;
+    s_colIcoPrinters[1] = &g_icoPrinter16;
+    s_colIcoPrinters[2] = &g_icoDocument16;
+    s_colIcoPrinters[3] = &g_icoFolder16;
+
+    return create_lv(hwndParent, hInst, x, y, w, h,
+                     IDC_PRINTER_LIST,
+                     L"Porta", L"Impressora", L"Nome do arquivo", L"Pasta de destino",
+                     COL_W_PRINTERS, s_colIcoPrinters);
+}
+
+HWND listview_create_profile(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int h) {
+    s_colIcoProfiles[0] = &g_icoPlug16;
+    s_colIcoProfiles[1] = &g_icoDocument16;
+    s_colIcoProfiles[2] = &g_icoFolder16;
+    s_colIcoProfiles[3] = &g_icoInfo16;
+
+    return create_lv(hwndParent, hInst, x, y, w, h,
+                     IDC_PROFILE_LIST,
+                     L"Nome", L"Padrão do arquivo", L"Pasta de destino", L"Estratégia",
+                     COL_W_PROFILES, s_colIcoProfiles);
 }
 
 void listview_resize(HWND hwndList, int x, int y, int w, int h) {

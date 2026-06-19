@@ -6,6 +6,7 @@
 #include <winspool.h>
 #include "mainwnd.h"
 #include "dlg_add.h"
+#include "dlg_profile.h"
 #include "dlg_progress.h"
 #include "store.h"
 #include "resource.h"
@@ -18,18 +19,34 @@
 
 #define MAX_PRINTERS 512
 
+/* ── Subtítulo da aba Perfis ────────────────────────────────────────── */
+#define SUBTITLE_H 28
+
 /* ── Estado global ──────────────────────────────────────────────────── */
 static HWND g_hwndMain;
+static int  g_activeTab = 0; /* 0=Perfis  1=Impressoras  2=Configurações */
+
+/* Impressoras */
 static HWND g_hwndList;
 static HWND g_hwndBtnAdd;
 static HWND g_hwndBtnRemove;
 static HWND g_hwndBtnRefresh;
-static HWND g_hwndStatus;
-static int  g_activeTab = 0;
 static PrinterEntry g_printers[MAX_PRINTERS];
 static int  g_count = 0;
 
-/* ── Helpers de negócio (preservados integralmente) ──────────────────── */
+/* Perfis */
+static HWND g_hwndProfileList;
+static HWND g_hwndBtnNewProfile;
+static HWND g_hwndBtnEditProfile;
+static HWND g_hwndBtnDupProfile;
+static HWND g_hwndBtnDelProfile;
+static ProfileEntry g_profiles[MAX_PRINTERS];
+static int  g_profileCount = 0;
+
+/* Status bar */
+static HWND g_hwndStatus;
+
+/* ── Helpers de negócio — Impressoras ────────────────────────────────── */
 static void list_refresh(void) {
     ListView_DeleteAllItems(g_hwndList);
     for (int i = 0; i < g_count; i++) {
@@ -50,16 +67,6 @@ static void list_refresh(void) {
     }
     statusbar_set_text(g_hwndStatus, g_count);
     InvalidateRect(g_hwndMain, NULL, FALSE);
-}
-
-static void switch_tab(int tab) {
-    g_activeTab = tab;
-    BOOL imp = (tab == 0);
-    ShowWindow(g_hwndList,       imp ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnAdd,     imp ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnRemove,  imp ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnRefresh, imp ? SW_SHOW : SW_HIDE);
-    InvalidateRect(g_hwndMain, NULL, TRUE);
 }
 
 static void sync_with_system(void) {
@@ -156,18 +163,81 @@ static void on_remove(HWND hwnd) {
     sync_with_system();
 }
 
-/* ── Estado vazio ────────────────────────────────────────────────────── */
+/* ── Helpers de negócio — Perfis ─────────────────────────────────────── */
+static void profile_refresh(void) {
+    ListView_DeleteAllItems(g_hwndProfileList);
+    for (int i = 0; i < g_profileCount; i++) {
+        LVITEMW lvi = {0};
+        lvi.mask    = LVIF_TEXT;
+        lvi.iItem   = i;
+        lvi.pszText = g_profiles[i].name;
+        ListView_InsertItem(g_hwndProfileList, &lvi);
+
+        ListView_SetItemText(g_hwndProfileList, i, 1, g_profiles[i].outputBaseName);
+        ListView_SetItemText(g_hwndProfileList, i, 2, g_profiles[i].outputPath);
+
+        wchar_t *estrategia = g_profiles[i].overwriteFile ? L"Sobrescrever" : L"Incrementar";
+        ListView_SetItemText(g_hwndProfileList, i, 3, estrategia);
+    }
+    statusbar_set_text(g_hwndStatus, g_count);
+    InvalidateRect(g_hwndMain, NULL, FALSE);
+}
+
+static void load_profiles(void) {
+    ProfileEntry *loaded = NULL;
+    int n = profile_load(&loaded);
+    g_profileCount = (n > MAX_PRINTERS) ? MAX_PRINTERS : n;
+    if (g_profileCount > 0)
+        memcpy(g_profiles, loaded, (size_t)g_profileCount * sizeof(ProfileEntry));
+    profile_free(loaded);
+}
+
+/* ── Troca de aba ────────────────────────────────────────────────────── */
+static void switch_tab(int tab) {
+    g_activeTab = tab;
+    g_hoverRow  = -1;
+
+    BOOL isPerfis      = (tab == 0);
+    BOOL isImpressoras = (tab == 1);
+
+    ShowWindow(g_hwndProfileList,    isPerfis      ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnNewProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnEditProfile, isPerfis      ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnDupProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnDelProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
+
+    ShowWindow(g_hwndList,           isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnAdd,         isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnRemove,      isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnRefresh,     isImpressoras ? SW_SHOW : SW_HIDE);
+
+    InvalidateRect(g_hwndMain, NULL, TRUE);
+}
+
+/* ── Ações de perfil ─────────────────────────────────────────────────── */
+static void on_new_profile(HWND hwnd) {
+    ProfileEntry entry = {0};
+    if (!dlg_profile_show(hwnd, &entry)) return;
+    if (!dlg_progress_create_profile(hwnd,
+                                     entry.name,
+                                     entry.outputPath,
+                                     entry.outputBaseName,
+                                     (BOOL)entry.openAfterGenerate,
+                                     (BOOL)entry.overwriteFile)) return;
+    load_profiles();
+    profile_refresh();
+}
+
+/* ── Estado vazio da aba Impressoras ─────────────────────────────────── */
 static void paint_empty_state(HDC dc, RECT rcContent) {
     int cx = (rcContent.left + rcContent.right)  / 2;
     int cy = (rcContent.top  + rcContent.bottom) / 2;
 
-    /* Ícone 48px */
     if (g_icoPrinter48) {
         DrawIconEx(dc, cx - 48, cy - 80,
                    g_icoPrinter48, 48, 48, 0, NULL, DI_NORMAL);
     }
 
-    /* Texto principal */
     SetTextColor(dc, CLR_TEXT_PRIMARY);
     SetBkMode(dc, TRANSPARENT);
     HFONT of = (HFONT)SelectObject(dc, g_fontSubtitle);
@@ -176,7 +246,6 @@ static void paint_empty_state(HDC dc, RECT rcContent) {
               DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     SelectObject(dc, of);
 
-    /* Texto secundário */
     SetTextColor(dc, CLR_TEXT_SECONDARY);
     of = (HFONT)SelectObject(dc, g_fontContent);
     RECT rt2 = {rcContent.left, cy + 28, rcContent.right, cy + 52};
@@ -192,7 +261,6 @@ static void on_create(HWND hwnd) {
 
     theme_init(hInst);
 
-    /* Ícone da janela (taskbar) */
     SendMessageW(hwnd, WM_SETICON, ICON_BIG,
         (LPARAM)LoadImageW(hInst, MAKEINTRESOURCEW(IDI_ICO_APP),
                            IMAGE_ICON, 48, 48, LR_DEFAULTCOLOR));
@@ -200,33 +268,51 @@ static void on_create(HWND hwnd) {
         (LPARAM)LoadImageW(hInst, MAKEINTRESOURCEW(IDI_ICO_APP),
                            IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR));
 
-    /* Title bar — botões Min/Close */
     titlebar_create_buttons(hwnd, hInst);
 
-    /* ListView — área de conteúdo */
     int lvX = CONTENT_PAD;
-    int lvY = TITLEBAR_H + NAVBAR_H + CONTENT_PAD;
     int lvW = WIN_W - CONTENT_PAD * 2;
+    int btnY = WIN_H - STATUSBAR_H - BTNBAR_H + (BTNBAR_H - BTN_H) / 2;
+
+    /* ── ListView de perfis (tab 0, começa visível) ─────────────────── */
+    int lvProfileY = TITLEBAR_H + NAVBAR_H + SUBTITLE_H;
+    int lvProfileH = WIN_H - lvProfileY - BTNBAR_H - STATUSBAR_H - CONTENT_PAD;
+    g_hwndProfileList = listview_create_profile(hwnd, hInst,
+                                                 lvX, lvProfileY, lvW, lvProfileH);
+
+    g_hwndBtnNewProfile = buttons_create(hwnd, hInst, IDC_BTN_NEW_PROFILE,
+                                          L"Novo Perfil", BTN_STYLE_PRIMARY,
+                                          CONTENT_PAD, btnY, BTN_W, BTN_H);
+    g_hwndBtnEditProfile = buttons_create(hwnd, hInst, IDC_BTN_EDIT_PROFILE,
+                                           L"Editar", BTN_STYLE_SECONDARY,
+                                           CONTENT_PAD + BTN_W + 8, btnY, BTN_W, BTN_H);
+    g_hwndBtnDupProfile = buttons_create(hwnd, hInst, IDC_BTN_DUP_PROFILE,
+                                          L"Duplicar", BTN_STYLE_SECONDARY,
+                                          CONTENT_PAD + (BTN_W + 8) * 2, btnY, BTN_W, BTN_H);
+    g_hwndBtnDelProfile = buttons_create(hwnd, hInst, IDC_BTN_DEL_PROFILE,
+                                          L"Excluir", BTN_STYLE_SECONDARY,
+                                          CONTENT_PAD + (BTN_W + 8) * 3, btnY, BTN_W, BTN_H);
+
+    /* ── ListView de impressoras (tab 1, começa oculto) ─────────────── */
+    int lvY = TITLEBAR_H + NAVBAR_H + SUBTITLE_H;
     int lvH = WIN_H - lvY - BTNBAR_H - STATUSBAR_H - CONTENT_PAD;
     g_hwndList = listview_create(hwnd, hInst, lvX, lvY, lvW, lvH);
 
-    /* Botões de ação */
-    int btnY = WIN_H - STATUSBAR_H - BTNBAR_H + (BTNBAR_H - BTN_H) / 2;
     g_hwndBtnAdd = buttons_create(hwnd, hInst, IDC_BTN_ADD,
-                                  L"Adicionar", BTN_STYLE_PRIMARY,
-                                  CONTENT_PAD, btnY, BTN_W, BTN_H);
+                                   L"Adicionar", BTN_STYLE_PRIMARY,
+                                   CONTENT_PAD, btnY, BTN_W, BTN_H);
     g_hwndBtnRemove = buttons_create(hwnd, hInst, IDC_BTN_REMOVE,
-                                     L"Remover", BTN_STYLE_SECONDARY,
-                                     CONTENT_PAD + BTN_W + 8, btnY, BTN_W, BTN_H);
+                                      L"Remover", BTN_STYLE_SECONDARY,
+                                      CONTENT_PAD + BTN_W + 8, btnY, BTN_W, BTN_H);
     g_hwndBtnRefresh = buttons_create(hwnd, hInst, IDC_BTN_REFRESH,
-                                      L"Atualizar", BTN_STYLE_SECONDARY,
-                                      CONTENT_PAD + (BTN_W + 8) * 2, btnY, BTN_W, BTN_H);
+                                       L"Atualizar", BTN_STYLE_SECONDARY,
+                                       CONTENT_PAD + (BTN_W + 8) * 2, btnY, BTN_W, BTN_H);
 
-    /* Status bar customizada */
+    /* Status bar */
     g_hwndStatus = statusbar_create(hwnd, hInst);
     statusbar_resize(g_hwndStatus, WIN_W, WIN_H);
 
-    /* Dados */
+    /* Carrega dados */
     PrinterEntry *loaded = NULL;
     int n = store_load(&loaded);
     g_count = (n > MAX_PRINTERS) ? MAX_PRINTERS : n;
@@ -234,6 +320,12 @@ static void on_create(HWND hwnd) {
         memcpy(g_printers, loaded, (size_t)g_count * sizeof(PrinterEntry));
     store_free(loaded);
     list_refresh();
+
+    load_profiles();
+    profile_refresh();
+
+    /* Aplica visibilidade inicial (tab 0 = Perfis) */
+    switch_tab(0);
 }
 
 /* ── WM_PAINT ────────────────────────────────────────────────────────── */
@@ -246,21 +338,33 @@ static void on_paint(HWND hwnd) {
     titlebar_paint(dc, w);
     navbar_paint(dc, w, g_activeTab);
 
-    /* Fundo da área de conteúdo */
     int contentTop = TITLEBAR_H + NAVBAR_H;
     int contentBot  = WIN_H - STATUSBAR_H - BTNBAR_H;
     RECT rcContent = {0, contentTop, w, contentBot};
     FillRect(dc, &rcContent, g_hbrPrimary);
 
-    /* Estado vazio */
-    if (g_activeTab == 0 && g_count == 0) {
+    /* Subtítulo da aba ativa */
+    if (g_activeTab == 0 || g_activeTab == 1) {
+        const wchar_t *sub = (g_activeTab == 0) ? L"PERFIS DE IMPRESSÃO"
+                                                 : L"IMPRESSORAS CADASTRADAS";
+        SetTextColor(dc, CLR_TEXT_SECONDARY);
+        SetBkMode(dc, TRANSPARENT);
+        HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+        RECT rcSub = {CONTENT_PAD, contentTop + 8,
+                      w - CONTENT_PAD, contentTop + SUBTITLE_H};
+        DrawTextW(dc, sub, -1, &rcSub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(dc, of);
+    }
+
+    /* Estado vazio da aba Impressoras */
+    if (g_activeTab == 1 && g_count == 0) {
         RECT rcEmp = {CONTENT_PAD, contentTop + CONTENT_PAD,
                       w - CONTENT_PAD, contentBot - CONTENT_PAD};
         paint_empty_state(dc, rcEmp);
     }
 
     /* Aba Configurações */
-    if (g_activeTab == 1) {
+    if (g_activeTab == 2) {
         SetTextColor(dc, CLR_TEXT_DISABLED);
         SetBkMode(dc, TRANSPARENT);
         HFONT of = (HFONT)SelectObject(dc, g_fontSubtitle);
@@ -274,7 +378,6 @@ static void on_paint(HWND hwnd) {
     RECT rcBtnBar = {0, btnBarTop, w, btnBarTop + BTNBAR_H};
     FillRect(dc, &rcBtnBar, g_hbrSecondary);
 
-    /* Separador superior da barra de botões */
     HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
     RECT rcSep = {0, btnBarTop, w, btnBarTop + 1};
     FillRect(dc, &rcSep, hbrd);
@@ -322,7 +425,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_MEASUREITEM: {
         MEASUREITEMSTRUCT *mis = (MEASUREITEMSTRUCT *)lp;
-        if (mis->CtlID == IDC_PRINTER_LIST) {
+        if (mis->CtlID == IDC_PRINTER_LIST || mis->CtlID == IDC_PROFILE_LIST) {
             listview_measure(mis);
             return TRUE;
         }
@@ -331,7 +434,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lp;
-        if (dis->CtlID == IDC_PRINTER_LIST) {
+        if (dis->CtlID == IDC_PRINTER_LIST || dis->CtlID == IDC_PROFILE_LIST) {
             listview_draw_item(dis);
             return TRUE;
         }
@@ -339,9 +442,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             titlebar_draw_button(dis);
             return TRUE;
         }
-        if (dis->CtlID == IDC_BTN_ADD)
+        if (dis->CtlID == IDC_BTN_ADD || dis->CtlID == IDC_BTN_NEW_PROFILE)
             return buttons_draw(dis, BTN_STYLE_PRIMARY);
-        if (dis->CtlID == IDC_BTN_REMOVE || dis->CtlID == IDC_BTN_REFRESH)
+        if (dis->CtlID == IDC_BTN_REMOVE  || dis->CtlID == IDC_BTN_REFRESH  ||
+            dis->CtlID == IDC_BTN_EDIT_PROFILE ||
+            dis->CtlID == IDC_BTN_DUP_PROFILE  ||
+            dis->CtlID == IDC_BTN_DEL_PROFILE)
             return buttons_draw(dis, BTN_STYLE_SECONDARY);
         return FALSE;
     }
@@ -353,6 +459,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BTN_REFRESH:       sync_with_system(); break;
         case IDC_BTN_TITLEMIN:      ShowWindow(hwnd, SW_MINIMIZE); break;
         case IDC_BTN_TITLECLOSE:    DestroyWindow(hwnd); break;
+        case IDC_BTN_NEW_PROFILE:   on_new_profile(hwnd);          break;
+        case IDC_BTN_EDIT_PROFILE:  /* TODO: dlg_profile_edit */  break;
+        case IDC_BTN_DUP_PROFILE:   /* TODO: duplicar perfil */   break;
+        case IDC_BTN_DEL_PROFILE:   /* TODO: excluir perfil */    break;
         }
         return 0;
 
@@ -364,7 +474,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-/* ── Registro e criação (Q1–Q3, Q8, Q9) ─────────────────────────────── */
+/* ── Registro e criação ──────────────────────────────────────────────── */
 BOOL mainwnd_register(HINSTANCE hInst) {
     WNDCLASSEXW wc = {0};
     wc.cbSize        = sizeof(wc);
@@ -382,7 +492,6 @@ HWND mainwnd_create(HINSTANCE hInst) {
     int x  = (sw - WIN_W) / 2;
     int y  = (sh - WIN_H) / 2;
 
-    /* Q1/Q2: WS_POPUP — sem decoração nativa. Q4: sem Maximizar. */
     HWND hwnd = CreateWindowExW(
         0,
         WC_MAINWND,
@@ -393,12 +502,10 @@ HWND mainwnd_create(HINSTANCE hInst) {
 
     if (!hwnd) return NULL;
 
-    /* Q8: sombra DWM */
     DWORD policy = DWMNCRP_ENABLED;
     DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY,
                           &policy, sizeof(policy));
 
-    /* Margins = 0 para a sombra aparecer numa janela WS_POPUP */
     MARGINS m = {0, 0, 0, 1};
     DwmExtendFrameIntoClientArea(hwnd, &m);
 

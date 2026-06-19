@@ -4,8 +4,11 @@
 #include <commctrl.h>
 #include "theme.h"
 
-/* Cria o ListView owner-draw e subclassa o Header. Retorna o HWND. */
+/* Cria o ListView de impressoras (owner-draw). Retorna o HWND. */
 HWND listview_create(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int h);
+
+/* Cria o ListView de perfis (owner-draw, colunas diferentes). Retorna o HWND. */
+HWND listview_create_profile(HWND hwndParent, HINSTANCE hInst, int x, int y, int w, int h);
 
 /* Posiciona o ListView e seu Header (WM_SIZE). */
 void listview_resize(HWND hwndList, int x, int y, int w, int h);

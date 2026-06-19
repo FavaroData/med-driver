@@ -37,3 +37,21 @@
 #define IDI_ICO_INFO16      611
 #define IDI_ICO_PLUG16      612
 #define IDI_ICO_APP         613
+
+/* ── Aba Perfis ──────────────────────────────────────────────────── */
+#define IDC_PROFILE_LIST     110
+#define IDC_BTN_NEW_PROFILE  111
+#define IDC_BTN_EDIT_PROFILE 112
+#define IDC_BTN_DUP_PROFILE  113
+#define IDC_BTN_DEL_PROFILE  114
+
+/* ── Dialog Novo Perfil ──────────────────────────────────────────── */
+#define IDD_ADD_PROFILE            300
+#define IDC_EDIT_PROFILE_NAME      301
+#define IDC_EDIT_PROFILE_BASENAME  302
+#define IDC_BTN_PROFILE_TOKEN      303
+#define IDC_LBL_PROFILE_PREVIEW    304
+#define IDC_EDIT_PROFILE_PATH      305
+#define IDC_BTN_PROFILE_BROWSE     306
+#define IDC_CHK_OPEN_AFTER         307
+#define IDC_CHK_OVERWRITE          308

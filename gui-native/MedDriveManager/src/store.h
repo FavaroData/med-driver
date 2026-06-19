@@ -9,12 +9,24 @@
 typedef struct {
     wchar_t name[PRINTER_NAME_MAX];
     wchar_t portName[PRINTER_PORT_MAX];
-    wchar_t outputPath[PRINTER_PATH_MAX];         // pasta de destino
-    wchar_t outputBaseName[PRINTER_BASENAME_MAX]; // nome base do arquivo (sem extensão, sem número)
+    wchar_t outputPath[PRINTER_PATH_MAX];
+    wchar_t outputBaseName[PRINTER_BASENAME_MAX];
 } PrinterEntry;
 
-/* Carrega do arquivo JSON. Retorna número de entradas; *out deve ser liberado com store_free(). */
+typedef struct {
+    wchar_t name[PRINTER_NAME_MAX];         /* nome do perfil (sem prefixo "PORT ") */
+    wchar_t portName[PRINTER_PORT_MAX];     /* nome completo da porta no spooler     */
+    wchar_t outputPath[PRINTER_PATH_MAX];
+    wchar_t outputBaseName[PRINTER_BASENAME_MAX];
+    DWORD   openAfterGenerate;
+    DWORD   overwriteFile;
+} ProfileEntry;
+
+/* Impressoras — JSON em %USERPROFILE% */
 int  store_load(PrinterEntry **out);
-/* Salva todas as entradas no arquivo JSON. Retorna 0 em sucesso, -1 em erro. */
 int  store_save(const PrinterEntry *entries, int count);
 void store_free(PrinterEntry *entries);
+
+/* Perfis — registry do monitor */
+int  profile_load(ProfileEntry **out);
+void profile_free(ProfileEntry *entries);

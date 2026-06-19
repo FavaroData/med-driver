@@ -11,3 +11,12 @@ BOOL dlg_progress_run(HWND parent,
 /* Exibe o dialog de progresso, lanca remove-printer.ps1 elevado via runas e
    mostra a saida em tempo real. Retorna TRUE se o script saiu com codigo 0. */
 BOOL dlg_progress_remove(HWND parent, const wchar_t *printerName);
+
+/* Exibe o dialog de progresso, lanca create-profile.ps1 e mostra a saida em
+   tempo real. Retorna TRUE se o script saiu com codigo 0. */
+BOOL dlg_progress_create_profile(HWND parent,
+                                  const wchar_t *profileName,
+                                  const wchar_t *outputPath,
+                                  const wchar_t *outputBaseName,
+                                  BOOL openAfterGenerate,
+                                  BOOL overwriteFile);

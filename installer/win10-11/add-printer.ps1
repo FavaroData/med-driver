@@ -1,11 +1,11 @@
 #Requires -RunAsAdministrator
 
-# Adiciona uma nova impressora Meddrive numa máquina onde install.ps1 já rodou.
+# Adiciona uma nova impressora Meddrive vinculada a um perfil existente.
+# O perfil deve ter sido criado previamente com create-profile.ps1.
 
 param(
-    [string]$OutputPath     = "C:\Users\favaro\Desktop\PDF",
-    [string]$OutputBaseName,
-    [string]$PrinterName    = "Meddrive Printer"
+    [string]$ProfileName,
+    [string]$PrinterName = "Meddrive Printer"
 )
 
 $LogFile   = "C:\Windows\Temp\meddrive_ps_addprinter.log"
@@ -31,13 +31,12 @@ function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 Trace-Step "inicio do script"
 Trace-Step "LogWriter OK"
 
-if (-not $OutputBaseName) {
-    Log "ERRO: parâmetro -OutputBaseName é obrigatório."
+if (-not $ProfileName) {
+    Log "ERRO: parâmetro -ProfileName é obrigatório."
     $LogWriter.Close()
     exit 1
 }
 
-$GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 $ErrorActionPreference = "Stop"
 
 # ── Pré-requisitos ────────────────────────────────────────────────────────
@@ -67,22 +66,16 @@ if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
 }
 Trace-Step "driver encontrado"
 
-# ── Configuração da porta ─────────────────────────────────────────────────
-$portSuffix = $PrinterName -replace 'Meddrive Printer', '' -replace '-', '' -replace '\s', ''
-$PortName   = if ($portSuffix) { "Meddrive Printer PORT $portSuffix" } else { "Meddrive Printer PORT" }
-$PortReg    = "$MonitorReg\Ports\$PortName"
+# ── Verifica o perfil ─────────────────────────────────────────────────────
+$PortName = "Meddrive Printer PORT $ProfileName"
+$PortReg  = "$MonitorReg\Ports\$PortName"
 
-Log "Configurando porta..."
-Trace-Step "registrando porta em $PortReg"
-New-Item -Path $PortReg -Force | Out-Null
-Set-ItemProperty -Path $PortReg -Name "OutputPath"      -Value $OutputPath      -Type String
-Set-ItemProperty -Path $PortReg -Name "OutputBaseName"  -Value $OutputBaseName  -Type String
-Set-ItemProperty -Path $PortReg -Name "GhostscriptPath" -Value $GhostscriptPath -Type String
-Trace-Step "porta configurada"
-
-if (-not (Test-Path $OutputPath)) {
-    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+if (-not (Test-Path $PortReg)) {
+    Log "ERRO: perfil '$ProfileName' não encontrado no registry ($PortReg). Crie o perfil com create-profile.ps1 antes de adicionar impressoras."
+    $LogWriter.Close()
+    exit 1
 }
+Trace-Step "perfil encontrado em $PortReg"
 
 # ── Spooler ───────────────────────────────────────────────────────────────
 Log "Iniciando o Spooler..."
@@ -97,37 +90,7 @@ if ($spoolerStatus -ne 'Running') {
     $LogWriter.Close()
     exit 1
 }
-if (-not (Test-Path $PortReg)) {
-    Log "ERRO: porta não encontrada no registry ($PortReg)"
-    $LogWriter.Close()
-    exit 1
-}
-Log "  OK - Spooler em execução, porta no registry"
-
-# ── Registra a porta via AddPortExW ──────────────────────────────────────
-Add-Type -TypeDefinition "
-using System;
-using System.Runtime.InteropServices;
-public class PortRegistrar {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct PORT_INFO_1 {
-        public string pName;
-    }
-    [DllImport(""winspool.drv"", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool AddPortEx(string pName, uint Level, ref PORT_INFO_1 lpBuffer, string lpMonitorName);
-}
-" -ErrorAction SilentlyContinue
-
-$pi1       = New-Object PortRegistrar+PORT_INFO_1
-$pi1.pName = $PortName
-Log "Registrando porta via AddPortExW..."
-$portOk = [PortRegistrar]::AddPortEx($null, 1, [ref]$pi1, $MonitorName)
-if (-not $portOk) {
-    $portErr = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    Log "  AVISO: AddPortExW falhou (Win32 erro $portErr)"
-} else {
-    Log "  OK - porta registrada via AddPortExW"
-}
+Log "  OK - Spooler em execução"
 
 # ── Registra a impressora via AddPrinterW ─────────────────────────────────
 Add-Type -TypeDefinition "
@@ -174,9 +137,9 @@ $pi2.pDatatype       = "RAW"
 $pi2.Attributes      = 0x40
 
 Log "Registrando impressora via AddPrinterW..."
-Log "  pPrinterName   : $($pi2.pPrinterName)"
-Log "  pPortName      : $($pi2.pPortName)"
-Log "  pDriverName    : $($pi2.pDriverName)"
+Log "  pPrinterName : $($pi2.pPrinterName)"
+Log "  pPortName    : $($pi2.pPortName)"
+Log "  pDriverName  : $($pi2.pDriverName)"
 
 if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue) {
     Remove-Printer -Name $PrinterName
@@ -202,12 +165,10 @@ while ($attempt -lt $maxAttempts -and -not $success) {
 
 Log ""
 if ($success) {
-    Log "Instalação concluída!"
+    Log "Impressora adicionada com sucesso!"
     Log "  Impressora : $PrinterName"
+    Log "  Perfil     : $ProfileName"
     Log "  Porta      : $PortName"
-    Log "  Template   : $OutputBaseName"
-    Log "  Saída      : $OutputPath\"
-    Log "  Ghostscript: $GhostscriptPath"
 } else {
     Log "ERRO: falha ao registrar a impressora '$PrinterName'."
     Log "  Motivo: $erroMsg"

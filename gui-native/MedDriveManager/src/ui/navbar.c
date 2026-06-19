@@ -3,9 +3,10 @@
 #include "navbar.h"
 #include "theme.h"
 
-#define NAV_COUNT 2
+#define NAV_COUNT 3
 
 static const wchar_t *NAV_LABELS[NAV_COUNT] = {
+    L"PERFIS",
     L"IMPRESSORAS",
     L"CONFIGURAÇÕES",
 };
@@ -28,7 +29,9 @@ void navbar_paint(HDC dc, int clientW, int activeTab) {
         }
 
         /* Ícone (20px centrado verticalmente) */
-        HICON ico = (i == 0) ? g_icoPrinter20 : g_icoSettings20;
+        HICON ico = (i == 0) ? g_icoFolder20
+                  : (i == 1) ? g_icoPrinter20
+                             : g_icoSettings20;
         if (ico) {
             int iconX = rt.left + 14;
             int iconY = TITLEBAR_H + (NAVBAR_H - 20) / 2;

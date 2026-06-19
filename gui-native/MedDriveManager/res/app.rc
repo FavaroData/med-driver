@@ -52,6 +52,42 @@ BEGIN
     DEFPUSHBUTTON   "Adicionar",           IDOK,            258, 182,  56,  14
 END
 
+IDD_ADD_PROFILE DIALOGEX 0, 0, 320, 215
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Novo Perfil"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    /* ── Seção: Identificação ── */
+    LTEXT           "IDENTIFICAÇÃO",        IDC_STATIC,              12,  10, 296,  9
+    LTEXT           "Nome do perfil:",      IDC_STATIC,              12,  24, 296,  9
+    EDITTEXT        IDC_EDIT_PROFILE_NAME,                           12,  34, 296,  14, ES_AUTOHSCROLL
+
+    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ,         12,  56, 296,  1
+
+    /* ── Seção: Saída ── */
+    LTEXT           "SAÍDA",               IDC_STATIC,              12,  63, 296,  9
+    LTEXT           "Padrão do arquivo:",  IDC_STATIC,              12,  77, 296,  9
+    EDITTEXT        IDC_EDIT_PROFILE_BASENAME,                       12,  87, 240,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Inserir", IDC_BTN_PROFILE_TOKEN,               254,  87,  54,  14
+
+    LTEXT           "", IDC_LBL_PROFILE_PREVIEW,                     12, 105, 296,   9
+
+    LTEXT           "Pasta de destino:",   IDC_STATIC,              12, 118, 296,  9
+    EDITTEXT        IDC_EDIT_PROFILE_PATH,                           12, 128, 262,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...", IDC_BTN_PROFILE_BROWSE,                  278, 128,  30,  14
+
+    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ,         12, 148, 296,  1
+
+    /* ── Seção: Opções ── */
+    LTEXT           "OPÇÕES",              IDC_STATIC,              12, 155, 296,  9
+    AUTOCHECKBOX    "Abrir PDF após gerar",               IDC_CHK_OPEN_AFTER, 12, 168, 148, 10
+    AUTOCHECKBOX    "Sobrescrever arquivo existente",     IDC_CHK_OVERWRITE,  12, 181, 160, 10
+
+    /* ── Rodapé ── */
+    PUSHBUTTON      "Cancelar",            IDCANCEL,               198, 198,  56,  14
+    DEFPUSHBUTTON   "Salvar",              IDOK,                   258, 198,  56,  14
+END
+
 IDD_PROGRESS DIALOGEX 0, 0, 420, 230
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Adicionando Impressora..."
