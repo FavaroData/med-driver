@@ -7,6 +7,7 @@
 #include "dlg_add.h"
 #include "resource.h"
 #include "ui/theme.h"
+#include "ui/buttons.h"
 
 static PrinterEntry *s_entry;
 
@@ -171,12 +172,14 @@ static void make_btn_ownerdraw(HWND hwnd, int id) {
     LONG_PTR s = GetWindowLongPtrW(hBtn, GWL_STYLE);
     SetWindowLongPtrW(hBtn, GWL_STYLE, (s & ~0xFL) | BS_OWNERDRAW);
     SendMessageW(hBtn, WM_SETFONT, (WPARAM)g_fontContent, TRUE);
+    buttons_install_hover(hBtn);
 }
 
 static void draw_dlg_btn(DRAWITEMSTRUCT *dis, BOOL isPrimary) {
     HDC  dc  = dis->hDC;
     RECT rc  = dis->rcItem;
-    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0;
+    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0
+            || GetWindowLongPtrW(dis->hwndItem, GWLP_USERDATA) != 0;
     BOOL sel = (dis->itemState & ODS_SELECTED) != 0;
 
     COLORREF bg = isPrimary

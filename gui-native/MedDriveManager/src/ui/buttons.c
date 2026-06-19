@@ -1,7 +1,39 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <commctrl.h>
 #include "buttons.h"
 #include "theme.h"
+
+/* ── Hover tracking ─────────────────────────────────────────────────────── */
+
+static LRESULT CALLBACK BtnHoverProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                      UINT_PTR id, DWORD_PTR data) {
+    (void)wp; (void)lp; (void)data;
+    switch (msg) {
+    case WM_MOUSEMOVE:
+        if (!GetWindowLongPtrW(hwnd, GWLP_USERDATA)) {
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 1);
+            TRACKMOUSEEVENT tme = {sizeof(tme), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tme);
+            InvalidateRect(hwnd, NULL, FALSE);
+        }
+        break;
+    case WM_MOUSELEAVE:
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+        InvalidateRect(hwnd, NULL, FALSE);
+        break;
+    case WM_NCDESTROY:
+        RemoveWindowSubclass(hwnd, BtnHoverProc, id);
+        break;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
+void buttons_install_hover(HWND hwnd) {
+    SetWindowSubclass(hwnd, BtnHoverProc, 1, 0);
+}
+
+/* ── Criação ─────────────────────────────────────────────────────────────── */
 
 HWND buttons_create(HWND hwndParent, HINSTANCE hInst,
                     int id, const wchar_t *label, BtnStyle style,
@@ -12,13 +44,15 @@ HWND buttons_create(HWND hwndParent, HINSTANCE hInst,
         x, y, w, h,
         hwndParent, (HMENU)(UINT_PTR)id, hInst, NULL);
     SendMessageW(hwnd, WM_SETFONT, (WPARAM)g_fontContent, TRUE);
+    buttons_install_hover(hwnd);
     return hwnd;
 }
 
 BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
     HDC  dc  = dis->hDC;
     RECT rc  = dis->rcItem;
-    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0;
+    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0
+            || GetWindowLongPtrW(dis->hwndItem, GWLP_USERDATA) != 0;
     BOOL sel = (dis->itemState & ODS_SELECTED) != 0;
     BOOL dis_state = (dis->itemState & ODS_DISABLED) != 0;
 

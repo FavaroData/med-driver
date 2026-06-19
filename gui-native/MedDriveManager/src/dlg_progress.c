@@ -4,6 +4,7 @@
 #include "dlg_progress.h"
 #include "resource.h"
 #include "ui/theme.h"
+#include "ui/buttons.h"
 
 #define WM_APP_PS_OUTPUT  (WM_APP + 1)
 #define WM_APP_PS_DONE    (WM_APP + 2)
@@ -125,7 +126,8 @@ static void draw_close_btn(DRAWITEMSTRUCT *di) {
     HDC  dc  = di->hDC;
     RECT rc  = di->rcItem;
     BOOL d   = (di->itemState & ODS_DISABLED) != 0;
-    BOOL hot = (di->itemState & ODS_HOTLIGHT) != 0;
+    BOOL hot = (di->itemState & ODS_HOTLIGHT) != 0
+            || GetWindowLongPtrW(di->hwndItem, GWLP_USERDATA) != 0;
     BOOL sel = (di->itemState & ODS_SELECTED) != 0;
 
     COLORREF bg = d   ? CLR_BTN_SECONDARY :
@@ -159,6 +161,7 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
         HWND hBtn = GetDlgItem(hwnd, IDC_BTN_CLOSE_PROGRESS);
         LONG_PTR style = GetWindowLongPtrW(hBtn, GWL_STYLE);
         SetWindowLongPtrW(hBtn, GWL_STYLE, (style & ~0xFL) | BS_OWNERDRAW);
+        buttons_install_hover(hBtn);
         EnableWindow(hBtn, FALSE);
 
         ProgressParams *p = (ProgressParams *)lp;

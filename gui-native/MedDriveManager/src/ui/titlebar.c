@@ -2,28 +2,32 @@
 #include <windows.h>
 #include "titlebar.h"
 #include "theme.h"
+#include "buttons.h"
 #include "resource.h"
 
 void titlebar_create_buttons(HWND hwndParent, HINSTANCE hInst) {
     int btnY = (TITLEBAR_H - TITLEBTN_W) / 2;
     int btnX = WIN_W - TITLEBTN_W * 2;
 
-    CreateWindowW(L"BUTTON", L"",
+    HWND hMin = CreateWindowW(L"BUTTON", L"",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         btnX, btnY, TITLEBTN_W, TITLEBTN_W,
         hwndParent, (HMENU)(UINT_PTR)IDC_BTN_TITLEMIN, hInst, NULL);
+    buttons_install_hover(hMin);
 
-    CreateWindowW(L"BUTTON", L"",
+    HWND hClose = CreateWindowW(L"BUTTON", L"",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
         btnX + TITLEBTN_W, btnY, TITLEBTN_W, TITLEBTN_W,
         hwndParent, (HMENU)(UINT_PTR)IDC_BTN_TITLECLOSE, hInst, NULL);
+    buttons_install_hover(hClose);
 }
 
 void titlebar_draw_button(DRAWITEMSTRUCT *dis) {
     BOOL isClose = (dis->CtlID == IDC_BTN_TITLECLOSE);
     HDC  dc  = dis->hDC;
     RECT rc  = dis->rcItem;
-    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0;
+    BOOL hot = (dis->itemState & ODS_HOTLIGHT) != 0
+            || GetWindowLongPtrW(dis->hwndItem, GWLP_USERDATA) != 0;
     BOOL sel = (dis->itemState & ODS_SELECTED) != 0;
 
     COLORREF bg;
