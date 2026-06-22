@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 
-# Remove completamente uma impressora Meddrive do sistema:
-# impressora, porta e registry da porta.
+# Remove a impressora Meddrive do sistema.
+# O perfil (porta no registry) é preservado e pode ser reutilizado.
 
 param(
     [string]$PrinterName = "Meddrive Printer"
@@ -32,15 +32,7 @@ Trace-Step "LogWriter OK"
 
 $ErrorActionPreference = "Stop"
 
-$MonitorName = "Meddrive Printer MONITOR"
-$MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
-
-$portSuffix = $PrinterName -replace 'Meddrive Printer', '' -replace '-', '' -replace '\s', ''
-$PortName   = if ($portSuffix) { "Meddrive Printer PORT $portSuffix" } else { "Meddrive Printer PORT" }
-$PortReg    = "$MonitorReg\Ports\$PortName"
-
 Log "Impressora : $PrinterName"
-Log "Porta      : $PortName"
 Log ""
 
 # ── Garante Spooler em execução ──────────────────────────────────────────
@@ -62,38 +54,8 @@ if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue) {
 }
 Trace-Step "impressora removida"
 
-# ── Remove a porta via Spooler ────────────────────────────────────────────
-Log "Removendo porta '$PortName'..."
-if (Get-PrinterPort -Name $PortName -ErrorAction SilentlyContinue) {
-    Remove-PrinterPort -Name $PortName
-    Log "  OK - porta removida"
-} else {
-    Log "  AVISO: porta '$PortName' não encontrada no Spooler"
-}
-Trace-Step "porta removida"
-
-# ── Remove registry da porta ─────────────────────────────────────────────
-Log "Limpando registry..."
-Stop-Service -Name Spooler -Force
-$p = Get-Process -Name spoolsv -ErrorAction SilentlyContinue
-if ($p) { $p.WaitForExit() }
-
-if (Test-Path $PortReg) {
-    Remove-Item -Path $PortReg -Recurse -Force
-    Log "  OK - chave de registry da porta removida"
-} else {
-    Log "  OK - registry da porta já inexistente"
-}
-Trace-Step "registry limpo"
-
-# ── Reinicia Spooler ──────────────────────────────────────────────────────
-Log "Reiniciando Spooler..."
-Start-Service -Name Spooler
-Trace-Step "Spooler reiniciado"
-
 Log ""
 Log "Remoção concluída!"
 Log "  Impressora : $PrinterName"
-Log "  Porta      : $PortName"
 
 $LogWriter.Close()

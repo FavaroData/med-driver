@@ -8,6 +8,12 @@
 #include "ui/theme.h"
 #include "ui/buttons.h"
 
+typedef struct {
+    ProfileEntry       *out;
+    const ProfileEntry *prefill;
+    const wchar_t      *title;
+} ProfileDlgParams;
+
 static ProfileEntry *s_entry;
 
 static void on_browse(HWND hwnd) {
@@ -151,15 +157,31 @@ static void draw_dlg_btn(DRAWITEMSTRUCT *dis, BOOL isPrimary) {
 }
 
 static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    (void)lp;
     switch (msg) {
-    case WM_INITDIALOG:
+    case WM_INITDIALOG: {
+        ProfileDlgParams *params = (ProfileDlgParams *)lp;
+        s_entry = params->out;
+
+        if (params->title)
+            SetWindowTextW(hwnd, params->title);
+
+        if (params->prefill) {
+            SetDlgItemTextW(hwnd, IDC_EDIT_PROFILE_NAME,     params->prefill->name);
+            SetDlgItemTextW(hwnd, IDC_EDIT_PROFILE_BASENAME, params->prefill->outputBaseName);
+            SetDlgItemTextW(hwnd, IDC_EDIT_PROFILE_PATH,     params->prefill->outputPath);
+            CheckDlgButton(hwnd, IDC_CHK_OPEN_AFTER,
+                params->prefill->openAfterGenerate ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hwnd, IDC_CHK_OVERWRITE,
+                params->prefill->overwriteFile ? BST_CHECKED : BST_UNCHECKED);
+        }
+
         make_btn_ownerdraw(hwnd, IDOK);
         make_btn_ownerdraw(hwnd, IDCANCEL);
         make_btn_ownerdraw(hwnd, IDC_BTN_PROFILE_BROWSE);
         make_btn_ownerdraw(hwnd, IDC_BTN_PROFILE_TOKEN);
         update_preview(hwnd);
         return TRUE;
+    }
 
     case WM_CTLCOLORDLG:
         return (INT_PTR)g_hbrPrimary;
@@ -267,9 +289,11 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return FALSE;
 }
 
-BOOL dlg_profile_show(HWND parent, ProfileEntry *out) {
-    s_entry = out;
+BOOL dlg_profile_show(HWND parent, ProfileEntry *out,
+                      const ProfileEntry *prefill, const wchar_t *title) {
+    ProfileDlgParams params = { out, prefill, title };
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
-    INT_PTR result  = DialogBoxW(hInst, MAKEINTRESOURCEW(IDD_ADD_PROFILE), parent, DlgProc);
+    INT_PTR result  = DialogBoxParamW(hInst, MAKEINTRESOURCEW(IDD_ADD_PROFILE),
+                                      parent, DlgProc, (LPARAM)&params);
     return result == IDOK;
 }

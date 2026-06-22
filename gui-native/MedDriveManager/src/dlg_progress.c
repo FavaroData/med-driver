@@ -9,13 +9,16 @@
 #define WM_APP_PS_OUTPUT  (WM_APP + 1)
 #define WM_APP_PS_DONE    (WM_APP + 2)
 
-typedef enum { MODE_ADD, MODE_REMOVE, MODE_CREATE_PROFILE } ProgressMode;
+typedef enum { MODE_ADD, MODE_REMOVE, MODE_CREATE_PROFILE,
+               MODE_EDIT_PROFILE, MODE_REMOVE_PROFILE } ProgressMode;
 
 typedef struct {
     HWND         hwnd;
     ProgressMode mode;
     wchar_t      scriptPath[MAX_PATH];
     wchar_t      printerName[256];
+    wchar_t      profileName[256];
+    wchar_t      newProfileName[256];
     wchar_t      outputPath[MAX_PATH];
     wchar_t      outputBaseName[256];
     BOOL         openAfterGenerate;
@@ -105,8 +108,8 @@ static DWORD WINAPI ps_thread(LPVOID param) {
     wchar_t cmd[4096];
     _snwprintf_s(cmd, 4096, _TRUNCATE,
         L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
-        L" -PrinterName \"%s\" -OutputPath \"%s\" -OutputBaseName \"%s\"",
-        p->scriptPath, p->printerName, p->outputPath, p->outputBaseName);
+        L" -ProfileName \"%s\" -PrinterName \"%s\"",
+        p->scriptPath, p->profileName, p->printerName);
     DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
     return r;
@@ -121,6 +124,34 @@ static DWORD WINAPI ps_thread_create_profile(LPVOID param) {
         p->scriptPath, p->printerName, p->outputPath, p->outputBaseName,
         p->openAfterGenerate ? L" -OpenAfterGenerate" : L"",
         p->overwriteFile     ? L" -OverwriteFile"     : L"");
+    DWORD r = run_ps(p, cmd);
+    HeapFree(GetProcessHeap(), 0, p);
+    return r;
+}
+
+static DWORD WINAPI ps_thread_edit_profile(LPVOID param) {
+    ProgressParams *p = (ProgressParams *)param;
+    wchar_t cmd[4096];
+    _snwprintf_s(cmd, 4096, _TRUNCATE,
+        L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
+        L" -ProfileName \"%s\" -NewName \"%s\""
+        L" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s",
+        p->scriptPath, p->profileName, p->newProfileName,
+        p->outputPath, p->outputBaseName,
+        p->openAfterGenerate ? L" -OpenAfterGenerate" : L"",
+        p->overwriteFile     ? L" -OverwriteFile"     : L"");
+    DWORD r = run_ps(p, cmd);
+    HeapFree(GetProcessHeap(), 0, p);
+    return r;
+}
+
+static DWORD WINAPI ps_thread_remove_profile(LPVOID param) {
+    ProgressParams *p = (ProgressParams *)param;
+    wchar_t cmd[4096];
+    _snwprintf_s(cmd, 4096, _TRUNCATE,
+        L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
+        L" -ProfileName \"%s\"",
+        p->scriptPath, p->profileName);
     DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
     return r;
@@ -192,6 +223,10 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             fn = ps_thread_remove;         title = L"Removendo Impressora";
         } else if (s_mode == MODE_CREATE_PROFILE) {
             fn = ps_thread_create_profile; title = L"Criando Perfil";
+        } else if (s_mode == MODE_EDIT_PROFILE) {
+            fn = ps_thread_edit_profile;   title = L"Editando Perfil";
+        } else if (s_mode == MODE_REMOVE_PROFILE) {
+            fn = ps_thread_remove_profile; title = L"Removendo Perfil";
         } else {
             fn = ps_thread;                title = L"Adicionando Impressora";
         }
@@ -238,6 +273,14 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
             append_text(hEdit, s_success
                 ? L"\r\n--- Perfil criado com sucesso. ---\r\n"
                 : L"\r\n--- Falha ao criar perfil. ---\r\n");
+        } else if (s_mode == MODE_EDIT_PROFILE) {
+            append_text(hEdit, s_success
+                ? L"\r\n--- Perfil editado com sucesso. ---\r\n"
+                : L"\r\n--- Falha ao editar perfil. ---\r\n");
+        } else if (s_mode == MODE_REMOVE_PROFILE) {
+            append_text(hEdit, s_success
+                ? L"\r\n--- Perfil removido com sucesso. ---\r\n"
+                : L"\r\n--- Falha ao remover perfil. ---\r\n");
         } else {
             append_text(hEdit, s_success
                 ? L"\r\n--- Impressora adicionada com sucesso. ---\r\n"
@@ -267,8 +310,7 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 
 BOOL dlg_progress_run(HWND parent,
                       const wchar_t *printerName,
-                      const wchar_t *outputPath,
-                      const wchar_t *outputBaseName) {
+                      const wchar_t *profileName) {
     wchar_t scriptPath[MAX_PATH];
     GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
     wchar_t *slash = wcsrchr(scriptPath, L'\\');
@@ -286,10 +328,9 @@ BOOL dlg_progress_run(HWND parent,
     ProgressParams *params = (ProgressParams *)HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ProgressParams));
     if (!params) return FALSE;
-    wcsncpy_s(params->scriptPath,    MAX_PATH, scriptPath,    _TRUNCATE);
-    wcsncpy_s(params->printerName,   256,      printerName,   _TRUNCATE);
-    wcsncpy_s(params->outputPath,    MAX_PATH, outputPath,    _TRUNCATE);
-    wcsncpy_s(params->outputBaseName,256,      outputBaseName,_TRUNCATE);
+    wcsncpy_s(params->scriptPath,  MAX_PATH, scriptPath,  _TRUNCATE);
+    wcsncpy_s(params->printerName, 256,      printerName, _TRUNCATE);
+    wcsncpy_s(params->profileName, 256,      profileName, _TRUNCATE);
     params->mode = MODE_ADD;
 
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
@@ -322,6 +363,79 @@ BOOL dlg_progress_remove(HWND parent, const wchar_t *printerName) {
     wcsncpy_s(params->scriptPath,  MAX_PATH, scriptPath,  _TRUNCATE);
     wcsncpy_s(params->printerName, 256,      printerName, _TRUNCATE);
     params->mode = MODE_REMOVE;
+
+    HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
+    INT_PTR result = DialogBoxParamW(hInst,
+                                     MAKEINTRESOURCEW(IDD_PROGRESS),
+                                     parent,
+                                     ProgressDlgProc,
+                                     (LPARAM)params);
+    return result == IDOK;
+}
+
+BOOL dlg_progress_edit_profile(HWND parent,
+                                const wchar_t *profileName,
+                                const wchar_t *newProfileName,
+                                const wchar_t *outputPath,
+                                const wchar_t *outputBaseName,
+                                BOOL openAfterGenerate,
+                                BOOL overwriteFile) {
+    wchar_t scriptPath[MAX_PATH];
+    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
+    wchar_t *slash = wcsrchr(scriptPath, L'\\');
+    if (slash) *(slash + 1) = L'\0';
+    wcsncat_s(scriptPath, MAX_PATH, L"edit-profile.ps1", _TRUNCATE);
+
+    if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
+        MessageBoxW(parent,
+            L"Arquivo edit-profile.ps1 não encontrado.\r\n"
+            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Erro", MB_ICONERROR | MB_OK);
+        return FALSE;
+    }
+
+    ProgressParams *params = (ProgressParams *)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ProgressParams));
+    if (!params) return FALSE;
+    wcsncpy_s(params->scriptPath,     MAX_PATH, scriptPath,      _TRUNCATE);
+    wcsncpy_s(params->profileName,    256,      profileName,     _TRUNCATE);
+    wcsncpy_s(params->newProfileName, 256,      newProfileName,  _TRUNCATE);
+    wcsncpy_s(params->outputPath,     MAX_PATH, outputPath,      _TRUNCATE);
+    wcsncpy_s(params->outputBaseName, 256,      outputBaseName,  _TRUNCATE);
+    params->mode              = MODE_EDIT_PROFILE;
+    params->openAfterGenerate = openAfterGenerate;
+    params->overwriteFile     = overwriteFile;
+
+    HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
+    INT_PTR result = DialogBoxParamW(hInst,
+                                     MAKEINTRESOURCEW(IDD_PROGRESS),
+                                     parent,
+                                     ProgressDlgProc,
+                                     (LPARAM)params);
+    return result == IDOK;
+}
+
+BOOL dlg_progress_remove_profile(HWND parent, const wchar_t *profileName) {
+    wchar_t scriptPath[MAX_PATH];
+    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
+    wchar_t *slash = wcsrchr(scriptPath, L'\\');
+    if (slash) *(slash + 1) = L'\0';
+    wcsncat_s(scriptPath, MAX_PATH, L"remove-profile.ps1", _TRUNCATE);
+
+    if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
+        MessageBoxW(parent,
+            L"Arquivo remove-profile.ps1 não encontrado.\r\n"
+            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Erro", MB_ICONERROR | MB_OK);
+        return FALSE;
+    }
+
+    ProgressParams *params = (ProgressParams *)HeapAlloc(
+        GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ProgressParams));
+    if (!params) return FALSE;
+    wcsncpy_s(params->scriptPath,  MAX_PATH, scriptPath,  _TRUNCATE);
+    wcsncpy_s(params->profileName, 256,      profileName, _TRUNCATE);
+    params->mode = MODE_REMOVE_PROFILE;
 
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
     INT_PTR result = DialogBoxParamW(hInst,

@@ -9,8 +9,7 @@
 typedef struct {
     wchar_t name[PRINTER_NAME_MAX];
     wchar_t portName[PRINTER_PORT_MAX];
-    wchar_t outputPath[PRINTER_PATH_MAX];
-    wchar_t outputBaseName[PRINTER_BASENAME_MAX];
+    wchar_t profileName[PRINTER_NAME_MAX];
 } PrinterEntry;
 
 typedef struct {
@@ -22,9 +21,6 @@ typedef struct {
     DWORD   overwriteFile;
 } ProfileEntry;
 
-/* Impressoras — JSON em %USERPROFILE% */
-int  store_load(PrinterEntry **out);
-int  store_save(const PrinterEntry *entries, int count);
 void store_free(PrinterEntry *entries);
 
 /* Perfis — registry do monitor */

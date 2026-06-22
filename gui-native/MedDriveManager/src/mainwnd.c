@@ -53,23 +53,18 @@ static void list_refresh(void) {
         LVITEMW lvi = {0};
         lvi.mask    = LVIF_TEXT;
         lvi.iItem   = i;
-        lvi.pszText = g_printers[i].portName;
+        lvi.pszText = g_printers[i].name;
         ListView_InsertItem(g_hwndList, &lvi);
-
-        ListView_SetItemText(g_hwndList, i, 1, g_printers[i].name);
-
-        wchar_t filePattern[PRINTER_BASENAME_MAX + 8] = {0};
-        if (g_printers[i].outputBaseName[0])
-            _snwprintf_s(filePattern, PRINTER_BASENAME_MAX + 8, _TRUNCATE,
-                         L"%s.pdf", g_printers[i].outputBaseName);
-        ListView_SetItemText(g_hwndList, i, 2, filePattern);
-        ListView_SetItemText(g_hwndList, i, 3, g_printers[i].outputPath);
+        ListView_SetItemText(g_hwndList, i, 1, g_printers[i].profileName);
     }
     statusbar_set_text(g_hwndStatus, g_count);
     InvalidateRect(g_hwndMain, NULL, FALSE);
 }
 
 static void sync_with_system(void) {
+    static const WCHAR PORT_PREFIX[] = L"Meddrive Printer PORT ";
+    int prefixLen = (int)wcslen(PORT_PREFIX);
+
     DWORD needed = 0, returned = 0;
     EnumPrintersW(PRINTER_ENUM_LOCAL, NULL, 2, NULL, 0, &needed, &returned);
 
@@ -87,28 +82,15 @@ static void sync_with_system(void) {
                     if (_wcsicmp(info[i].pDriverName, L"Meddrive Printer DRIVER") != 0) continue;
 
                     PrinterEntry *e = &newPrinters[newCount];
-                    wcsncpy_s(e->name,     PRINTER_NAME_MAX, info[i].pPrinterName, _TRUNCATE);
-                    if (info[i].pPortName)
-                        wcsncpy_s(e->portName, PRINTER_PORT_MAX, info[i].pPortName, _TRUNCATE);
-
+                    wcsncpy_s(e->name, PRINTER_NAME_MAX, info[i].pPrinterName, _TRUNCATE);
                     if (info[i].pPortName) {
-                        wchar_t regKey[512];
-                        _snwprintf_s(regKey, 512, _TRUNCATE,
-                            L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\"
-                            L"Meddrive Printer MONITOR\\Ports\\%s",
-                            info[i].pPortName);
-                        HKEY hKey;
-                        if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, regKey, 0,
-                                          KEY_READ, &hKey) == ERROR_SUCCESS) {
-                            DWORD type, sz;
-                            sz = PRINTER_PATH_MAX * sizeof(wchar_t);
-                            RegQueryValueExW(hKey, L"OutputPath", NULL, &type,
-                                             (BYTE *)e->outputPath, &sz);
-                            sz = PRINTER_BASENAME_MAX * sizeof(wchar_t);
-                            RegQueryValueExW(hKey, L"OutputBaseName", NULL, &type,
-                                             (BYTE *)e->outputBaseName, &sz);
-                            RegCloseKey(hKey);
-                        }
+                        wcsncpy_s(e->portName, PRINTER_PORT_MAX, info[i].pPortName, _TRUNCATE);
+                        if (wcsncmp(info[i].pPortName, PORT_PREFIX, (size_t)prefixLen) == 0)
+                            wcsncpy_s(e->profileName, PRINTER_NAME_MAX,
+                                      info[i].pPortName + prefixLen, _TRUNCATE);
+                        else
+                            wcsncpy_s(e->profileName, PRINTER_NAME_MAX,
+                                      info[i].pPortName, _TRUNCATE);
                     }
                     newCount++;
                 }
@@ -120,7 +102,6 @@ static void sync_with_system(void) {
     g_count = newCount;
     memcpy(g_printers, newPrinters, (size_t)newCount * sizeof(PrinterEntry));
     list_refresh();
-    store_save(g_printers, g_count);
 }
 
 static void on_add(HWND hwnd) {
@@ -137,9 +118,17 @@ static void on_add(HWND hwnd) {
         return;
     }
 
+    if (g_profileCount == 0) {
+        MessageBoxW(hwnd,
+            L"Nenhum perfil cadastrado.\r\n"
+            L"Crie um perfil na aba PERFIS antes de adicionar uma impressora.",
+            L"Sem perfis disponíveis", MB_ICONWARNING | MB_OK);
+        return;
+    }
+
     PrinterEntry entry = {0};
-    if (!dlg_add_show(hwnd, &entry)) return;
-    if (!dlg_progress_run(hwnd, entry.name, entry.outputPath, entry.outputBaseName)) return;
+    if (!dlg_add_show(hwnd, &entry, g_profiles, g_profileCount)) return;
+    if (!dlg_progress_run(hwnd, entry.name, entry.profileName)) return;
     sync_with_system();
 }
 
@@ -217,13 +206,108 @@ static void switch_tab(int tab) {
 /* ── Ações de perfil ─────────────────────────────────────────────────── */
 static void on_new_profile(HWND hwnd) {
     ProfileEntry entry = {0};
-    if (!dlg_profile_show(hwnd, &entry)) return;
+    if (!dlg_profile_show(hwnd, &entry, NULL, NULL)) return;
     if (!dlg_progress_create_profile(hwnd,
                                      entry.name,
                                      entry.outputPath,
                                      entry.outputBaseName,
                                      (BOOL)entry.openAfterGenerate,
                                      (BOOL)entry.overwriteFile)) return;
+    load_profiles();
+    profile_refresh();
+}
+
+static void on_edit_profile(HWND hwnd) {
+    int sel = ListView_GetNextItem(g_hwndProfileList, -1, LVNI_SELECTED);
+    if (sel < 0 || sel >= g_profileCount) return;
+
+    ProfileEntry edited = g_profiles[sel];
+    if (!dlg_profile_show(hwnd, &edited, &g_profiles[sel], L"Editar Perfil")) return;
+
+    /* Se o nome mudou, verifica impressoras vinculadas */
+    if (wcscmp(edited.name, g_profiles[sel].name) != 0) {
+        wchar_t linkedNames[512] = {0};
+        int linkedCount = 0;
+        for (int i = 0; i < g_count; i++) {
+            if (_wcsicmp(g_printers[i].portName, g_profiles[sel].portName) == 0) {
+                if (linkedCount > 0) wcsncat_s(linkedNames, 512, L"\r\n", _TRUNCATE);
+                wcsncat_s(linkedNames, 512, L"  \x2022 ", _TRUNCATE);
+                wcsncat_s(linkedNames, 512, g_printers[i].name, _TRUNCATE);
+                linkedCount++;
+            }
+        }
+        if (linkedCount > 0) {
+            wchar_t msg[1024];
+            _snwprintf_s(msg, 1024, _TRUNCATE,
+                L"Renomear o perfil afetará as impressoras vinculadas:\r\n%s\r\n\r\n"
+                L"As impressoras serão redirecionadas automaticamente. Continuar?",
+                linkedNames);
+            if (MessageBoxW(hwnd, msg, L"Impressoras vinculadas",
+                            MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+                return;
+        }
+    }
+
+    if (!dlg_progress_edit_profile(hwnd,
+                                   g_profiles[sel].name,
+                                   edited.name,
+                                   edited.outputPath,
+                                   edited.outputBaseName,
+                                   (BOOL)edited.openAfterGenerate,
+                                   (BOOL)edited.overwriteFile)) return;
+    load_profiles();
+    profile_refresh();
+    sync_with_system();
+}
+
+static void on_dup_profile(HWND hwnd) {
+    int sel = ListView_GetNextItem(g_hwndProfileList, -1, LVNI_SELECTED);
+    if (sel < 0 || sel >= g_profileCount) return;
+
+    ProfileEntry copy = g_profiles[sel];
+    _snwprintf_s(copy.name, PRINTER_NAME_MAX, _TRUNCATE,
+                 L"%s - C\xF3pia", g_profiles[sel].name);
+    copy.portName[0] = L'\0'; /* será derivado do novo nome no script */
+
+    ProfileEntry result = copy;
+    if (!dlg_profile_show(hwnd, &result, &copy, L"Duplicar Perfil")) return;
+    if (!dlg_progress_create_profile(hwnd,
+                                     result.name,
+                                     result.outputPath,
+                                     result.outputBaseName,
+                                     (BOOL)result.openAfterGenerate,
+                                     (BOOL)result.overwriteFile)) return;
+    load_profiles();
+    profile_refresh();
+}
+
+static void on_del_profile(HWND hwnd) {
+    int sel = ListView_GetNextItem(g_hwndProfileList, -1, LVNI_SELECTED);
+    if (sel < 0 || sel >= g_profileCount) return;
+
+    /* Verifica impressoras vinculadas — bloqueia se houver */
+    for (int i = 0; i < g_count; i++) {
+        if (_wcsicmp(g_printers[i].portName, g_profiles[sel].portName) == 0) {
+            wchar_t msg[512];
+            _snwprintf_s(msg, 512, _TRUNCATE,
+                L"O perfil \"%s\" está vinculado à impressora \"%s\".\r\n"
+                L"Remova a impressora antes de excluir o perfil.",
+                g_profiles[sel].name, g_printers[i].name);
+            MessageBoxW(hwnd, msg, L"Perfil em uso", MB_ICONWARNING | MB_OK);
+            return;
+        }
+    }
+
+    wchar_t confirm[512];
+    _snwprintf_s(confirm, 512, _TRUNCATE,
+        L"Excluir o perfil \"%s\"?\r\n"
+        L"A porta e todas as configurações associadas serão removidas.",
+        g_profiles[sel].name);
+    if (MessageBoxW(hwnd, confirm, L"Confirmar exclusão",
+                    MB_ICONWARNING | MB_YESNO | MB_DEFBUTTON2) != IDYES)
+        return;
+
+    if (!dlg_progress_remove_profile(hwnd, g_profiles[sel].name)) return;
     load_profiles();
     profile_refresh();
 }
@@ -313,13 +397,7 @@ static void on_create(HWND hwnd) {
     statusbar_resize(g_hwndStatus, WIN_W, WIN_H);
 
     /* Carrega dados */
-    PrinterEntry *loaded = NULL;
-    int n = store_load(&loaded);
-    g_count = (n > MAX_PRINTERS) ? MAX_PRINTERS : n;
-    if (g_count > 0)
-        memcpy(g_printers, loaded, (size_t)g_count * sizeof(PrinterEntry));
-    store_free(loaded);
-    list_refresh();
+    sync_with_system();
 
     load_profiles();
     profile_refresh();
@@ -460,9 +538,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BTN_TITLEMIN:      ShowWindow(hwnd, SW_MINIMIZE); break;
         case IDC_BTN_TITLECLOSE:    DestroyWindow(hwnd); break;
         case IDC_BTN_NEW_PROFILE:   on_new_profile(hwnd);          break;
-        case IDC_BTN_EDIT_PROFILE:  /* TODO: dlg_profile_edit */  break;
-        case IDC_BTN_DUP_PROFILE:   /* TODO: duplicar perfil */   break;
-        case IDC_BTN_DEL_PROFILE:   /* TODO: excluir perfil */    break;
+        case IDC_BTN_EDIT_PROFILE:  on_edit_profile(hwnd); break;
+        case IDC_BTN_DUP_PROFILE:   on_dup_profile(hwnd);  break;
+        case IDC_BTN_DEL_PROFILE:   on_del_profile(hwnd);  break;
         }
         return 0;
 

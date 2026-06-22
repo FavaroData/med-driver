@@ -17,7 +17,7 @@ $MINGW-gcc -shared \
     -I"$MINGW_INC" \
     "$PROJ_ROOT/src/monitor.c" \
     "$PROJ_ROOT/src/monitor.def" \
-    -lwinspool -ladvapi32 \
+    -lwinspool -ladvapi32 -lshell32 \
     -o "$PROJ_ROOT/meddrivemon.dll"
 echo "  -> $PROJ_ROOT/meddrivemon.dll"
 

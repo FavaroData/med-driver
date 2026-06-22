@@ -1,6 +1,7 @@
 #include "monitor.h"
 #include <stdio.h>
 #include <stdarg.h>
+#include <shellapi.h>
 
 static HKEY        g_hkRoot   = NULL;
 static MONITOR2    g_monitor2 = {0};
@@ -65,6 +66,14 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
     size = sizeof(ctx->ghostscriptPath);
     RegQueryValueExW(hKey, L"GhostscriptPath", NULL, NULL, (LPBYTE)ctx->ghostscriptPath, &size);
     LogDebug("ReadConfig: GhostscriptPath lido (len=%lu)\n", size);
+
+    // lê flags opcionais (falha silenciosa — valor padrão 0 já está no ctx zerado)
+    size = sizeof(DWORD);
+    RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &size);
+    size = sizeof(DWORD);
+    RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &size);
+    LogDebug("ReadConfig: OpenAfterGenerate=%lu OverwriteFile=%lu\n",
+        ctx->openAfterGenerate, ctx->overwriteFile);
 
     // fecha a chave do registry, retorna TRUE se ambos os caminhos foram lidos com sucesso, FALSE caso contrário
     RegCloseKey(hKey);
@@ -161,8 +170,8 @@ static int detect_n_token_width(const WCHAR *tmpl) {
     return 0;
 }
 
-// Resolve o template e grava em resolvedPath o caminho completo do arquivo de saída.
-static void resolve_template(PORT_CONTEXT *ctx, WCHAR *resolvedPath, int cchPath) {
+// Resolve o template e grava o caminho completo do PDF em ctx->resolvedPath.
+static void resolve_template(PORT_CONTEXT *ctx) {
     const WCHAR *tmpl = ctx->outputBaseName;
 
     // Retrocompatibilidade: template sem tokens → append "-{n}"
@@ -185,56 +194,67 @@ static void resolve_template(PORT_CONTEXT *ctx, WCHAR *resolvedPath, int cchPath
     int nWidth = detect_n_token_width(tmpl);
 
     if (nWidth > 0) {
-        // Monta padrão glob com '*' no lugar do {n+}
-        WCHAR globName[MAX_PATH];
-        apply_token_replacements(tmpl, globName, MAX_PATH,
-                                 dateStr, timeStr, safeDoc, L"*");
-
-        WCHAR globPattern[MAX_PATH];
-        _snwprintf(globPattern, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, globName);
-
-        // Localiza '*' no globName para extrair N dos nomes existentes
-        const WCHAR *star = wcschr(globName, L'*');
-        int prefixLen = star ? (int)(star - globName) : 0;
-        int suffixLen = star ? (int)wcslen(star + 1) : 0;
-
-        int maxN = 0;
-        WIN32_FIND_DATAW fd;
-        HANDLE hFind = FindFirstFileW(globPattern, &fd);
-        if (hFind != INVALID_HANDLE_VALUE) {
-            do {
-                int fnLen  = (int)wcslen(fd.cFileName);
-                int pdfLen = 4;
-                int nStart = prefixLen;
-                int nEnd   = fnLen - pdfLen - suffixLen;
-                if (nEnd > nStart) {
-                    WCHAR nStr[16] = {0};
-                    wcsncpy_s(nStr, 16, fd.cFileName + nStart, (size_t)(nEnd - nStart));
-                    int n = _wtoi(nStr);
-                    if (n > maxN) maxN = n;
-                }
-            } while (FindNextFileW(hFind, &fd));
-            FindClose(hFind);
-        }
-
         WCHAR nStr[16];
-        if (nWidth == 1)
-            _snwprintf(nStr, 16, L"%d", maxN + 1);
-        else
-            _snwprintf(nStr, 16, L"%0*d", nWidth, maxN + 1);
+
+        if (ctx->overwriteFile) {
+            // Sobrescrever: usa contador fixo 1, sem escanear a pasta
+            if (nWidth == 1)
+                _snwprintf(nStr, 16, L"%d", 1);
+            else
+                _snwprintf(nStr, 16, L"%0*d", nWidth, 1);
+            LogDebug("resolve_template: overwriteFile=1, counter fixo '%ls'\n", nStr);
+        } else {
+            // Incrementar: escaneia a pasta e usa maxN+1
+            WCHAR globName[MAX_PATH];
+            // {data} (10 chars) e {hora} (8 chars) usam '?' para combinar qualquer
+            // valor — assim arquivos de sessões anteriores são encontrados corretamente.
+            apply_token_replacements(tmpl, globName, MAX_PATH,
+                                     L"??????????", L"????????", safeDoc, L"*");
+
+            WCHAR globPattern[MAX_PATH];
+            _snwprintf(globPattern, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, globName);
+
+            const WCHAR *star = wcschr(globName, L'*');
+            int prefixLen = star ? (int)(star - globName) : 0;
+            int suffixLen = star ? (int)wcslen(star + 1) : 0;
+
+            int maxN = 0;
+            WIN32_FIND_DATAW fd;
+            HANDLE hFind = FindFirstFileW(globPattern, &fd);
+            if (hFind != INVALID_HANDLE_VALUE) {
+                do {
+                    int fnLen  = (int)wcslen(fd.cFileName);
+                    int pdfLen = 4;
+                    int nStart = prefixLen;
+                    int nEnd   = fnLen - pdfLen - suffixLen;
+                    if (nEnd > nStart) {
+                        WCHAR nBuf[16] = {0};
+                        wcsncpy_s(nBuf, 16, fd.cFileName + nStart, (size_t)(nEnd - nStart));
+                        int n = _wtoi(nBuf);
+                        if (n > maxN) maxN = n;
+                    }
+                } while (FindNextFileW(hFind, &fd));
+                FindClose(hFind);
+            }
+
+            if (nWidth == 1)
+                _snwprintf(nStr, 16, L"%d", maxN + 1);
+            else
+                _snwprintf(nStr, 16, L"%0*d", nWidth, maxN + 1);
+        }
 
         WCHAR finalName[MAX_PATH];
         apply_token_replacements(tmpl, finalName, MAX_PATH,
                                  dateStr, timeStr, safeDoc, nStr);
-        _snwprintf(resolvedPath, cchPath, L"%s\\%s.pdf", ctx->outputPath, finalName);
+        _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, finalName);
     } else {
         WCHAR finalName[MAX_PATH];
         apply_token_replacements(tmpl, finalName, MAX_PATH,
                                  dateStr, timeStr, safeDoc, L"");
-        _snwprintf(resolvedPath, cchPath, L"%s\\%s.pdf", ctx->outputPath, finalName);
+        _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, finalName);
     }
 
-    LogDebug("resolve_template: %ls\n", resolvedPath);
+    LogDebug("resolve_template: %ls\n", ctx->resolvedPath);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -253,15 +273,14 @@ static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
 
     si.cb = sizeof(si);
 
-    // determina o caminho de saída via template
-    WCHAR resolvedPath[MAX_PATH];
-    resolve_template(ctx, resolvedPath, MAX_PATH);
+    // determina o caminho de saída via template (grava em ctx->resolvedPath)
+    resolve_template(ctx);
 
     // executa o Ghostscript com o caminho enumerado
     _snwprintf(cmdLine, 2048,
         L"\"%s\" -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%s\" \"%s\"",
         ctx->ghostscriptPath,
-        resolvedPath,
+        ctx->resolvedPath,
         ctx->tempPsFile);
 
     // cria o processo do Ghostscript
@@ -549,7 +568,13 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     // deleta o arquivo temporário
     // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
     DeleteFileW(ctx->tempPsFile);
-    // retorna o resultado da conversão do arquivo
+
+    // abre o PDF no visualizador padrão se solicitado e a conversão foi bem-sucedida
+    if (ok && ctx->openAfterGenerate) {
+        LogDebug("EndDocPort: abrindo PDF '%ls'\n", ctx->resolvedPath);
+        ShellExecuteW(NULL, L"open", ctx->resolvedPath, NULL, NULL, SW_SHOWNORMAL);
+    }
+
     return ok;
 }
 

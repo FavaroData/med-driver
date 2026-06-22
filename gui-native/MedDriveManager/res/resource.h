@@ -8,14 +8,13 @@
 #define IDC_STATUS_BAR      104
 #define IDC_BTN_REFRESH     105
 
-#define IDD_ADD_PRINTER     200
-#define IDC_EDIT_NAME       201
-#define IDC_EDIT_PORT       202
-#define IDC_EDIT_PATH       203
-#define IDC_BTN_BROWSE      204
-#define IDC_EDIT_BASENAME   205
-#define IDC_BTN_TOKEN       206
-#define IDC_LBL_PREVIEW     207
+#define IDD_ADD_PRINTER          200
+#define IDC_EDIT_NAME            201
+#define IDC_COMBO_PROFILE        210
+#define IDC_LBL_PRV_PATH         211
+#define IDC_LBL_PRV_BASENAME     212
+#define IDC_LBL_PRV_STRATEGY     213
+#define IDC_LBL_PRV_OPEN_AFTER   214
 
 #define IDM_EXIT            401
 

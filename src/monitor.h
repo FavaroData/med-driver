@@ -18,7 +18,10 @@ typedef struct {
     WCHAR  ghostscriptPath[MAX_PATH];
     WCHAR  docName[512];               // nome do job de impressão (capturado em StartDocPort)
     WCHAR  tempPsFile[MAX_PATH];
+    WCHAR  resolvedPath[MAX_PATH];     // caminho final do PDF (preenchido em resolve_template)
     HANDLE hTempFile;
+    DWORD  openAfterGenerate;          // registry: OpenAfterGenerate
+    DWORD  overwriteFile;              // registry: OverwriteFile — usa counter=1 sem escanear pasta
 } PORT_CONTEXT;
 
 // InitializePrintMonitor2 declarada pelo winsplp.h

@@ -113,7 +113,9 @@ Write-Host "Copiando aplicativo para $AppDir..."
 New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
 Copy-Item (Join-Path $ScriptDir "add-printer.ps1")     "$AppDir\add-printer.ps1"      -Force
 Copy-Item (Join-Path $ScriptDir "create-profile.ps1")  "$AppDir\create-profile.ps1"   -Force
+Copy-Item (Join-Path $ScriptDir "edit-profile.ps1")    "$AppDir\edit-profile.ps1"     -Force
 Copy-Item (Join-Path $ScriptDir "remove-printer.ps1")  "$AppDir\remove-printer.ps1"   -Force
+Copy-Item (Join-Path $ScriptDir "remove-profile.ps1")  "$AppDir\remove-profile.ps1"   -Force
 Copy-Item (Join-Path $ScriptDir "MEDDRIVE.PPD")        "$AppDir\MEDDRIVE.PPD"         -Force
 Copy-Item (Join-Path $ScriptDir "MedDriveManager.exe") "$AppDir\MedDriveManager.exe"  -Force
 Trace-Step "arquivos do aplicativo copiados"
