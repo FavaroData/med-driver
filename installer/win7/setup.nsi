@@ -54,12 +54,12 @@ Section "Instalar Meddrive Printer" SecInstall
     File "install_helper.exe"
     File "..\win10-11\x64\Debug\MedDriveManager.exe"
     SetOutPath "$INSTDIR\installer\conf"
-    File "add-printer.ps1"
-    File "create-profile.ps1"
-    File "edit-profile.ps1"
-    File "edit-printer.ps1"
-    File "remove-printer.ps1"
-    File "remove-profile.ps1"
+    File "conf\add-printer.ps1"
+    File "conf\create-profile.ps1"
+    File "conf\edit-profile.ps1"
+    File "conf\edit-printer.ps1"
+    File "conf\remove-printer.ps1"
+    File "conf\remove-profile.ps1"
 
     ; lê ProgramData do ambiente Windows em tempo de execução
     ReadEnvStr $R0 "ProgramData"
