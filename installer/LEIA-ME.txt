@@ -1,35 +1,46 @@
-ANTES DE RODAR OS SCRIPTS
-=========================
+MEDDRIVE PRINTER — GUIA RÁPIDO
+================================
 
+INSTALAÇÃO
+----------
+Execute o instalador como Administrador:
+  - Windows 10/11: MeddrivePrinter-Setup.exe
+  - Windows 7:     MeddrivePrinter-Win7-Setup.exe
+
+Após a instalação, abra o MedDriveManager pelo menu Iniciar para
+criar perfis de saída e adicionar impressoras virtuais.
+
+
+PROBLEMA: EXECUÇÃO DE SCRIPTS DESABILITADA
+-------------------------------------------
 Se aparecer o erro:
-  "nao pode ser carregado porque a execucao de scripts foi desabilitada neste sistema"
+  "nao pode ser carregado porque a execucao de scripts foi desabilitada"
 
-Execute o script assim (sem alterar configuracoes do sistema):
-
-  powershell -ExecutionPolicy Bypass -File .\install.ps1
-
-Ou, para liberar permanentemente para o seu usuario:
-
+Execute no PowerShell (como Administrador):
   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
-Depois rode normalmente:
 
-  .\install.ps1
+VERIFICAR INSTALAÇÃO
+--------------------
+Para confirmar que o driver foi instalado corretamente, execute no PowerShell:
+
+  Get-Printer | Where-Object { $_.PortName -like "Meddrive*" } |
+      Select-Object Name, DriverName, PortName
+
+Ou use o script de diagnóstico completo (raiz do repositório):
+  .\tests\diagnostico.ps1
 
 
-PARA VERIFICAR SE O DRIVER MED PDF DRIVER FOI INSTALADO CORRETAMENTE NA IMPRESSORA VIRTUAL
-==========================================================================================
-Rode no PowerShell: 
-Get-Printer -Name "MedPrinter" | Select-Object Name, DriverName
-
-Saída esperada:
-Name       DriverName
-----       ----------
-MedPrinter Med PDF Printer
+LOGS
+----
+  Instalação:  C:\Windows\Temp\meddrive_install.log
+  Impressão:   C:\Windows\Temp\meddrivemon_init.log
 
 
 ORDEM DE USO
-============
-
-1. install.ps1   — instala o monitor, a porta e a impressora virtual
-2. diagnostico.ps1 — verifica se tudo foi instalado corretamente
+------------
+1. Instalar o MeddrivePrinter-Setup.exe (ou Win7)
+2. Abrir o MedDriveManager
+3. Criar um perfil de saída (aba Perfis)
+4. Adicionar uma impressora vinculada ao perfil (aba Impressoras)
+5. Imprimir a partir de qualquer aplicativo selecionando a impressora criada

@@ -46,14 +46,29 @@ Como o `setup.nsi` inclui `File /r "..\..\gs\ghostscript\bin\*"`, essas DLLs sã
 
 No Win7, escrever diretamente no registry para registrar o driver PSCRIPT5 (`HKLM:\...\Print\Environments\Windows x64\Drivers\Version-3\...`) faz o spooler **enumerar** o driver mas não consegue **carregá-lo** ao chamar `AddPrinter`, resultando em Win32 erro 6 (`ERROR_INVALID_HANDLE`).
 
-A solução é usar `AddPrinterDriverEx` via P/Invoke com `DRIVER_INFO_2` e flags `APD_COPY_ALL_FILES | APD_COPY_FROM_DIRECTORY = 20`.
+A solução é usar `AddPrinterDriverExW` com `DRIVER_INFO_2` e flags `APD_COPY_ALL_FILES | APD_COPY_FROM_DIRECTORY = 20`.
+
+Como o Win7 não possui o módulo `PrintManagement` do PowerShell (necessário para `Add-PrinterDriver`), essa chamada é feita por um **helper nativo em C**: `install_helper.exe`.
+
+### install_helper.exe
+
+Binário compilado de `installer/win7/install_helper.c`. Executa como processo separado com privilégio de administrador e é responsável por:
+
+1. Registrar o monitor no registry
+2. Copiar a DLL para `System32`
+3. Registrar o driver via `AddPrinterDriverExW`
+4. Copiar os arquivos do perfil para `ProgramData\Meddrive Printer\`
+
+O NSIS do instalador Win7 extrai o helper e o executa com `ExecWait`.
 
 Os arquivos do PSCRIPT5 no Win7 ficam no DriverStore com caminho dinâmico:
 ```
 C:\Windows\System32\DriverStore\FileRepository\ntprint.inf_amd64_neutral_<hash>\Amd64\
 ```
 
-O script detecta esse caminho em runtime:
+O helper detecta esse caminho em runtime varrendo o DriverStore por `PSCRIPT5.DLL`.
+
+O script PS detecta o mesmo caminho para as etapas que ainda usam PS:
 ```powershell
 $ps5 = Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" `
     -Recurse -Filter "PSCRIPT5.DLL" -ErrorAction SilentlyContinue | Select-Object -First 1

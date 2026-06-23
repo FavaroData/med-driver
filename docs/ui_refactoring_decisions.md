@@ -23,7 +23,7 @@
 **Decisão:** Removido. Title bar terá apenas Minimizar e Fechar.
 
 ## Q5 — Aba Configurações
-**Decisão:** Criada na navegação como placeholder "Em breve". Conteúdo implementado em entrega separada.
+**Decisão:** Criada na navegação como placeholder `"Configurações — em breve."` (tab index 2, `g_activeTab == 2`). Conteúdo a ser implementado em entrega futura. Candidatos: caminho do Ghostscript configurável, diagnóstico do sistema, pasta padrão para novos perfis, confirmação ao excluir, painel sobre/versão.
 
 ## Q6 / Q10 — Ícones
 **Decisão:** Arquivos ICO 32-bit com alpha, embutidos como recursos Win32 `ICON`.
