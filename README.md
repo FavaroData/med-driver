@@ -1,78 +1,128 @@
-# Meddrive Printer v1.2
-> Desenvolvido para a empresa **Stach IT**.
+# Meddrive Printer v2.5
+> Desenvolvido para a empresa **StachIt**.
 
 Impressora virtual PDF para Windows que captura jobs de impressão e os converte automaticamente em arquivos PDF, salvando-os em uma pasta configurável.
 
-Não exige interação do usuário após a instalação — basta instalar, definir o nome da impressora e o caminho de saída, e imprimir normalmente.
+Não exige interação do usuário após a instalação — basta instalar, criar um perfil de saída e adicionar uma impressora pelo **MedDriveManager**.
 
-## Como funciona?
+---
 
-São 3 arquivos source:
+## Componentes
 
 | Arquivo | Descrição |
 |---|---|
-| `monitor.c` | Código da DLL com toda a lógica de interação com o Spooler e o Ghostscript |
-| `monitor.h` | Módulo das variáveis de interação entre Spooler e Monitor (DLL) |
-| `monitor.def` | Define quais funções o Spooler lê da DLL |
+| `meddrivemon.dll` | DLL do monitor de impressão — toda a lógica de interação com o Spooler e o Ghostscript |
+| `MedDriveManager.exe` | Aplicativo gráfico de gerenciamento de perfis e impressoras |
+| `MeddrivePrinter-Setup.exe` | Instalador para Windows 10/11 |
+| `MeddrivePrinter-Win7-Setup.exe` | Instalador para Windows 7 x64 |
 
-Os demais são arquivos de instalação com a lógica de configuração da impressora virtual.
+### Código-fonte da DLL
 
-Foi desenvolvido um driver personalizado baseado na arquitetura do **PSCRIPT5** (Driver PostScript) que converte o documento (job enviado para impressão) em PostScript.
+| Arquivo | Descrição |
+|---|---|
+| `src/monitor.c` | Implementação do monitor de impressão (MONITOR2 API) |
+| `src/monitor.h` | Variáveis e estruturas compartilhadas |
+| `src/monitor.def` | Exportações lidas pelo Spooler |
 
-E todas as configurações (caminhos personalizados e do Ghostscript) são armazenadas no **Registry do Windows** e lidas pelo monitor no momento em que cada job de impressão é iniciado.
+### Scripts de gerenciamento (`installer/*/conf/`)
 
-O **Ghostscript** é um interpretador de PostScript e PDF. Nesse projeto, ele é chamado recebendo os parâmetros necessários para chamada da API (parâmetros definidos de acordo com a configuração — `OutputPath`, `PORT`, local da DLL e local do `.exe` do próprio Ghostscript).
+| Script | Descrição |
+|---|---|
+| `add-printer.ps1` | Cria uma impressora virtual vinculada a um perfil |
+| `remove-printer.ps1` | Remove impressora e porta associada |
+| `create-profile.ps1` | Cria um perfil de saída no registry |
+| `edit-profile.ps1` | Edita nome, caminho e configurações de um perfil |
+| `remove-profile.ps1` | Remove perfil e porta do registry |
+| `edit-printer.ps1` | Renomeia impressora e reassocia a um perfil |
 
-## Fluxo completo de um job de impressão
+---
 
-1. O Spooler carrega `meddrivemon.dll` e chama `InitializePrintMonitor2`, que preenche a estrutura `MONITOR2` (API do Windows) com todos os ponteiros de função e armazena a chave raiz do Registry em `g_hkRoot`.
+## Como funciona
 
-2. O Spooler consulta as portas disponíveis por meio do monitor, onde lê as subchaves de `Ports\` no Registry e retorna cada uma como uma porta virtual.
+O driver é baseado na arquitetura **PSCRIPT5** (PostScript) do Windows. Ao imprimir, o Spooler converte o documento para PostScript e entrega os bytes ao monitor. O monitor então chama o **Ghostscript** para converter o PostScript em PDF, gravando o resultado no caminho configurado no perfil.
 
-3. Ao receber um job, o Spooler chama `OpenPort` com o nome da porta. O monitor aloca um `PORT_CONTEXT` na heap e chama `ReadConfig` para ler `OutputPath` e `GhostscriptPath` do Registry. O ponteiro é devolvido como handle.
+Todas as configurações (caminho de saída, nome de arquivo, estratégia de conflito) são armazenadas no **Registry do Windows** e lidas pelo monitor em tempo de execução a cada job.
 
-4. O monitor cria um arquivo temporário `.ps` em `%TEMP%` para acumular os dados PostScript.
+### Fluxo de um job de impressão
 
-5. O Spooler entrega os bytes PostScript em uma ou mais chamadas. Cada chamada acrescenta ao arquivo temporário via `WriteFile`.
+1. O Spooler carrega `meddrivemon.dll` e chama `InitializePrintMonitor2`, preenchendo a estrutura `MONITOR2` com os ponteiros de função.
+2. O Spooler consulta as portas disponíveis — o monitor lê as subchaves de `Ports\` no registry e retorna cada uma como porta virtual.
+3. Ao receber um job, o Spooler chama `OpenPort`. O monitor aloca um `PORT_CONTEXT` e lê `OutputPath`, `OutputBaseName`, `GhostscriptPath` e `OverwriteFile` do registry.
+4. O monitor cria um arquivo `.ps` temporário em `%TEMP%` e acumula os bytes PostScript entregues pelo Spooler.
+5. Ao finalizar o job, o monitor fecha o arquivo, invoca o Ghostscript, aguarda a conclusão e deleta o temporário.
+6. `Monitor_ClosePort` libera o `PORT_CONTEXT`.
 
-6. Ao finalizar, o Spooler sinaliza o fim do job. O monitor fecha o handle do arquivo temporário, invoca `ConvertPsToPdf` (que executa o Ghostscript), aguarda a conclusão e deleta o arquivo temporário.
-
-7. É chamado o `Monitor_ClosePort` que libera a memória do `PORT_CONTEXT`.
+---
 
 ## Pré-requisitos
 
-- Windows 10 ou 11 (x64)
-- Ghostscript instalado (testado com `gs10.07.1` — `gswin64c.exe`)
+**Windows 10/11:**
+- Ghostscript (bundled no instalador)
 - PowerShell com permissão para executar scripts
 - Execução como Administrador
 
+**Windows 7 x64:**
+- Ghostscript 9.56.1 (bundled no instalador, compatível com Win7)
+- PowerShell 2.0+
+- Execução como Administrador
+
+---
+
 ## Instalação
 
-1. Execute como administrador o instalador `MeddrivePrinter-Setup.exe`
+### Windows 10/11
+Execute `MeddrivePrinter-Setup.exe` como administrador.
 
-> Se aparecer o erro "não pode ser carregado porque a execução de scripts foi desabilitada neste sistema", use, para liberar permanentemente para o seu usuario:
+### Windows 7
+Execute `MeddrivePrinter-Win7-Setup.exe` como administrador.
+
+O instalador Win7 usa `install_helper.exe` (binário nativo C) em vez de PowerShell para registrar o monitor e o driver, contornando limitações do PS 2.0.
+
+> Se aparecer o erro "execução de scripts foi desabilitada", execute:
 > ```powershell
 > Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 > ```
 
-## Configuração
+Após a instalação, abra o **MedDriveManager** para criar perfis e impressoras.
 
-As configurações ficam no Registry em:
+---
+
+## Gerenciamento
+
+O **MedDriveManager** oferece três abas:
+
+- **Perfis** — cria, edita, duplica e remove perfis de saída (caminho, nome de arquivo, estratégia de conflito)
+- **Impressoras** — adiciona e remove impressoras virtuais vinculadas a perfis
+- **Configurações** — *(em desenvolvimento)*
+
+---
+
+## Registry
+
+As configurações ficam em:
 
 ```
 HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR\Ports\Meddrive Printer PORT <nome>
 ```
 
-> **Regra de nomenclatura da porta:** o nome da subchave é derivado automaticamente do nome da impressora — remove "Meddrive Printer", "-" e espaços extras.
->
-> Exemplo:
-> - Impressora: `Meddrive Printer - Triton`
-> - Porta salva como: `Meddrive Printer PORT Triton`
-
-### Valores
-
 | Valor | Descrição | Exemplo |
 |---|---|---|
-| `OutputPath` | Caminho completo do arquivo PDF de saída | `C:\PDF\saida.pdf` |
-| `GhostscriptPath` | Caminho do executável do Ghostscript | `C:\Program Files\gs\gs10.07.1\bin\gswin64c.exe` |
-| Nome da subchave (porta) | Derivado do nome da impressora pelo instalador | `Meddrive Printer PORT Triton` |
+| `OutputPath` | Pasta de destino dos PDFs | `C:\PDF\` |
+| `OutputBaseName` | Padrão do nome de arquivo | `documento_{DATE}` |
+| `GhostscriptPath` | Caminho do executável do Ghostscript | `C:\ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe` |
+| `OverwriteFile` | `1` = sobrescrever · `0` = incrementar cópias | `0` |
+
+---
+
+## Build
+
+```bash
+bash build.sh
+```
+
+Requer: `x86_64-w64-mingw32-gcc`, `makensis` (NSIS ≥ 3.0).
+
+Gera:
+- `installer/win10-11/x64/Debug/MedDriveManager.exe`
+- `MeddrivePrinter-Setup.exe`
+- `MeddrivePrinter-Win7-Setup.exe`
