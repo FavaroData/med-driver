@@ -30,7 +30,7 @@
 /* ── Layout (pixels físicos) ─────────────────────────────────────────── */
 #define WIN_W           960
 #define WIN_H           620
-#define TITLEBAR_H       72
+#define TITLEBAR_H       48
 #define NAVBAR_H         48
 #define CONTENT_PAD      24
 #define STATUSBAR_H      36
@@ -40,7 +40,7 @@
 #define BTN_W           130
 #define BTN_H            36
 #define TITLEBTN_W       46
-#define NAV_TAB_W       180
+#define NAV_TAB_W       160
 
 /* ── IDs dos botões da title bar ─────────────────────────────────────── */
 #define IDC_BTN_TITLEMIN   901

@@ -197,10 +197,12 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetBkColor((HDC)wp,   CLR_CARD);
         return (INT_PTR)g_hbrCard;
 
-    case WM_CTLCOLORSTATIC:
-        SetTextColor((HDC)wp, CLR_TEXT_SECONDARY);
+    case WM_CTLCOLORSTATIC: {
+        BOOL isSection = (GetWindowLongPtrW((HWND)lp, GWLP_ID) == IDC_SECTION_LBL);
+        SetTextColor((HDC)wp, isSection ? CLR_ACCENT : CLR_TEXT_SECONDARY);
         SetBkMode((HDC)wp, TRANSPARENT);
         return (INT_PTR)g_hbrPrimary;
+    }
 
     case WM_CTLCOLORBTN:
         SetBkMode((HDC)wp, TRANSPARENT);

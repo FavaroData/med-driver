@@ -3,6 +3,7 @@
 #include <commctrl.h>
 #include "buttons.h"
 #include "theme.h"
+#include "resource.h"
 
 /* ── Hover tracking ─────────────────────────────────────────────────────── */
 
@@ -102,9 +103,11 @@ BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
     if (ico)
         DrawIconEx(dc, startX, midY - 10, ico, 20, 20, 0, NULL, DI_NORMAL);
 
-    COLORREF tc = dis_state    ? CLR_TEXT_DISABLED
+    BOOL isDanger = (dis->CtlID == IDC_BTN_DEL_PROFILE || dis->CtlID == IDC_BTN_REMOVE);
+    COLORREF tc = dis_state               ? CLR_TEXT_DISABLED
                 : style == BTN_STYLE_PRIMARY ? RGB(255, 255, 255)
-                :                              CLR_TEXT_PRIMARY;
+                : isDanger                ? CLR_RED
+                :                           CLR_TEXT_PRIMARY;
     SetTextColor(dc, tc);
     SetBkMode(dc, TRANSPARENT);
     of = (HFONT)SelectObject(dc, g_fontContent);

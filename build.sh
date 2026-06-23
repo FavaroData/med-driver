@@ -55,6 +55,13 @@ echo "=== Compilando instalador NSIS (Win10/11) ==="
 cd "$PROJ_ROOT/installer/win10-11"
 makensis setup.nsi
 
+echo "=== Compilando install_helper.exe (Win7) ==="
+$MINGW-gcc -DUNICODE -D_UNICODE -DWINVER=0x0601 -D_WIN32_WINNT=0x0601 \
+    -o "$PROJ_ROOT/installer/win7/install_helper.exe" \
+    "$PROJ_ROOT/installer/win7/install_helper.c" \
+    -lwinspool -ladvapi32
+echo "  -> $PROJ_ROOT/installer/win7/install_helper.exe"
+
 echo "=== Compilando instalador NSIS (Win7) ==="
 cd "$PROJ_ROOT/installer/win7"
 makensis setup.nsi
