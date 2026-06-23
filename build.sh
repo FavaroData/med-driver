@@ -51,13 +51,18 @@ $MINGW-gcc -mwindows \
 
 echo "  -> $OUT/MedDriveManager.exe"
 
-echo "=== Compilando instalador NSIS ==="
+echo "=== Compilando instalador NSIS (Win10/11) ==="
 cd "$PROJ_ROOT/installer/win10-11"
+makensis setup.nsi
+
+echo "=== Compilando instalador NSIS (Win7) ==="
+cd "$PROJ_ROOT/installer/win7"
 makensis setup.nsi
 
 echo ""
 echo "=== Build concluido ==="
-echo "  Aplicativo : $OUT/MedDriveManager.exe"
-echo "  Instalador : $PROJ_ROOT/MeddrivePrinter-Setup.exe"
+echo "  Aplicativo    : $OUT/MedDriveManager.exe"
+echo "  Instalador    : $PROJ_ROOT/MeddrivePrinter-Setup.exe"
+echo "  Instalador W7 : $PROJ_ROOT/MeddrivePrinter-Win7-Setup.exe"
 
 rm -rf "$TMP"

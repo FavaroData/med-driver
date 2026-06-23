@@ -1,13 +1,7 @@
 # Compativel com Windows 7 x64 e PowerShell 2.0+
-# Nao usa modulo PrintManagement (ausente no Windows 7 sem RSAT)
-param(
-    [string]$OutputPath  = "C:\Users\favaro\Desktop\PDF\saida.pdf",
-    [string]$PrinterName = "Meddrive Printer"
-)
+# Instala monitor, driver PSCRIPT5 e copia o aplicativo de gerenciamento.
+# NAO cria impressoras -- use MedDriveManager.exe apos a instalacao.
 
-# trap captura qualquer erro terminante em qualquer ponto do script e imprime
-# tipo da excecao, mensagem e linha exata via Write-Output (capturado mesmo com
-# saida totalmente redirecionada, ao contrario de Write-Host).
 trap {
     Write-Output "EXCEPTION TYPE: $($_.Exception.GetType().FullName)"
     Write-Output "EXCEPTION MSG : $($_.Exception.Message)"
@@ -19,95 +13,44 @@ function Trace-Step($msg) { Write-Output "CHECKPOINT: $msg" }
 
 Trace-Step "inicio do script"
 
-# O nsExec do NSIS nao garante heranca do token elevado do instalador para o
-# processo powershell.exe filho — forca elevacao explicita aqui.
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Trace-Step "processo nao elevado, relancando via RunAs"
     $scriptPath = $MyInvocation.MyCommand.Path
-    $arguments  = "-ExecutionPolicy Bypass -File `"$scriptPath`" -OutputPath `"$OutputPath`" -PrinterName `"$PrinterName`""
+    $arguments  = "-ExecutionPolicy Bypass -File `"$scriptPath`""
     Start-Process powershell -Verb RunAs -ArgumentList $arguments -Wait
     exit $LASTEXITCODE
 }
-Trace-Step "processo ja elevado (IsInRole Administrator = true)"
+Trace-Step "processo elevado"
 
-Trace-Step "antes do Start-Transcript"
 Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_install.log" -Force
 Trace-Step "Start-Transcript OK"
 
 $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+$AppDir          = "$env:ProgramData\Meddrive Printer"
 
 $ErrorActionPreference = "Stop"
 Trace-Step "resolvendo ScriptDir a partir de $($MyInvocation.MyCommand.Path)"
 $ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 Trace-Step "ScriptDir resolvido: $ScriptDir"
+
 $DllSource = Join-Path $ScriptDir "..\meddrivemon.dll"
 if (-not (Test-Path $DllSource)) {
     $DllSource = Join-Path $ScriptDir "..\..\meddrivemon.dll"
 }
 Trace-Step "DllSource: $DllSource"
-$DllDest   = "$env:SystemRoot\System32\meddrivemon.dll"
+$DllDest = "$env:SystemRoot\System32\meddrivemon.dll"
 
 $MonitorName = "Meddrive Printer MONITOR"
 $DriverName  = "Meddrive Printer DRIVER"
+$MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
+$DriverKey   = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3\$DriverName"
 
-$portSuffix = $PrinterName -replace 'Meddrive Printer', '' -replace '-', '' -replace '\s', ''
-$PortName   = if ($portSuffix) { "Meddrive Printer PORT $portSuffix" } else { "Meddrive Printer PORT" }
-
-$MonitorReg = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
-$PortReg    = "$MonitorReg\Ports\$PortName"
-$DriverKey  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Environments\Windows x64\Drivers\Version-3\$DriverName"
-
-# P/Invoke direto em winspool.drv — substitui os cmdlets do modulo PrintManagement
-# que nao existem no Windows 7 sem RSAT (Get-PrinterDriver, Remove-Printer, etc.)
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-
-public class Win32Print {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct PORT_INFO_1 {
-        public string pName;
-    }
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct PRINTER_INFO_2 {
-        public string pServerName;
-        public string pPrinterName;
-        public string pShareName;
-        public string pPortName;
-        public string pDriverName;
-        public string pComment;
-        public string pLocation;
-        public IntPtr pDevMode;
-        public string pSepFile;
-        public string pPrintProcessor;
-        public string pDatatype;
-        public string pParameters;
-        public IntPtr pSecurityDescriptor;
-        public uint   Attributes;
-        public uint   Priority;
-        public uint   DefaultPriority;
-        public uint   StartTime;
-        public uint   UntilTime;
-        public uint   Status;
-        public uint   cJobs;
-        public uint   AveragePPM;
-    }
-    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool AddPortEx(string pName, uint Level, ref PORT_INFO_1 lpBuffer, string lpMonitorName);
-    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern IntPtr AddPrinter(string pName, uint Level, ref PRINTER_INFO_2 pPrinter);
-    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
-    [DllImport("winspool.drv", SetLastError=true)]
-    public static extern bool ClosePrinter(IntPtr hPrinter);
-    [DllImport("winspool.drv", SetLastError=true)]
-    public static extern bool DeletePrinter(IntPtr hPrinter);
+public class Win32PrintInstall {
     [StructLayout(LayoutKind.Sequential)]
-    public struct DRIVER_INFO_1 {
-        public IntPtr pName;
-    }
-    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool EnumPrinterDrivers(string pName, string pEnvironment, uint Level, IntPtr pDriverInfo, uint cbBuf, ref uint pcbNeeded, ref uint pcReturned);
+    public struct DRIVER_INFO_1 { public IntPtr pName; }
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     public struct DRIVER_INFO_2 {
         public uint   cVersion;
@@ -118,17 +61,20 @@ public class Win32Print {
         public string pConfigFile;
     }
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
+    public static extern bool EnumPrinterDrivers(string pName, string pEnvironment, uint Level, IntPtr pDriverInfo, uint cbBuf, ref uint pcbNeeded, ref uint pcReturned);
+    [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
     public static extern bool AddPrinterDriverEx(string pName, uint Level, ref DRIVER_INFO_2 pDriverInfo, uint dwFileCopyFlags);
 }
 "@ -ErrorAction SilentlyContinue
 
-Trace-Step "antes de Stop-Service Spooler"
+# ── 1. Para o Spooler ─────────────────────────────────────────────────────
 Write-Host "Parando o Spooler..."
 Stop-Service -Name Spooler -Force
 $p = Get-Process -Name spoolsv -ErrorAction SilentlyContinue
 if ($p) { $p.WaitForExit() }
 Trace-Step "Spooler parado"
 
+# ── 2. Copia DLL para System32 ────────────────────────────────────────────
 Write-Host "Copiando DLL para System32..."
 if (-not (Test-Path $DllSource)) {
     Write-Host "ERRO: DLL nao encontrada em $DllSource"
@@ -138,26 +84,14 @@ Trace-Step "copiando $DllSource para $DllDest"
 Copy-Item $DllSource $DllDest -Force
 Trace-Step "DLL copiada"
 
+# ── 3. Registra monitor no registry ──────────────────────────────────────
 Write-Host "Registrando monitor no registry..."
 Trace-Step "registrando monitor em $MonitorReg"
-if (-not (Test-Path $MonitorReg)) {
-    New-Item -Path $MonitorReg | Out-Null
-}
+if (-not (Test-Path $MonitorReg)) { New-Item -Path $MonitorReg | Out-Null }
 Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
 Trace-Step "monitor registrado"
 
-Write-Host "Configurando porta..."
-Trace-Step "registrando porta em $PortReg"
-New-Item -Path $PortReg -Force | Out-Null
-Set-ItemProperty -Path $PortReg -Name "OutputPath"      -Value $OutputPath      -Type String
-Set-ItemProperty -Path $PortReg -Name "GhostscriptPath" -Value $GhostscriptPath -Type String
-Trace-Step "porta configurada"
-
-$outputDir = Split-Path -Parent $OutputPath
-if (-not (Test-Path $outputDir)) {
-    New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
-}
-
+# ── 4. Inicia Spooler ─────────────────────────────────────────────────────
 Write-Host "Iniciando o Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 5
@@ -171,16 +105,10 @@ if (-not (Test-Path $MonitorReg)) {
     Write-Host "ERRO: monitor nao encontrado no registry ($MonitorReg)"
     exit 1
 }
-if (-not (Test-Path $PortReg)) {
-    Write-Host "ERRO: porta nao encontrada no registry ($PortReg)"
-    exit 1
-}
-Write-Host "  OK - Spooler em execucao, monitor e porta no registry"
+Write-Host "  OK - Spooler em execucao, monitor no registry"
 
+# ── 5. Instala driver PSCRIPT5 via AddPrinterDriverEx ────────────────────
 Write-Host "Instalando driver PSCRIPT5 customizado via AddPrinterDriverEx..."
-# No Win7, PSCRIPT5.DLL nao esta em spool\drivers\x64\3\ a menos que uma impressora PS
-# ja tenha sido instalada antes. Os arquivos ficam no DriverStore com hash dinamico no caminho.
-# Detectamos o diretorio em runtime para nao depender de um caminho fixo.
 $ps5 = Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" `
     -Recurse -Filter "PSCRIPT5.DLL" -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $ps5) {
@@ -190,31 +118,26 @@ if (-not $ps5) {
 $driverDir = $ps5.DirectoryName
 Write-Host "  DriverStore: $driverDir"
 
-# AddPrinterDriverEx registra o driver pelo canal oficial do spooler (equivalente a
-# Add-PrinterDriver do Win10). O flag 20 = APD_COPY_ALL_FILES | APD_COPY_FROM_DIRECTORY
-# instrui o spooler a copiar os arquivos do DriverStore para spool\drivers\x64\3\.
-# Usar so o registry (abordagem anterior) fazia o spooler enumerar o driver mas nao
-# conseguia carrega-lo no AddPrinter, resultando em Win32 erro 6 (ERROR_INVALID_HANDLE).
-$di2              = New-Object Win32Print+DRIVER_INFO_2
+$di2              = New-Object Win32PrintInstall+DRIVER_INFO_2
 $di2.cVersion     = 3
 $di2.pName        = $DriverName
 $di2.pEnvironment = "Windows x64"
 $di2.pDriverPath  = "$driverDir\PSCRIPT5.DLL"
 $di2.pDataFile    = "$driverDir\PSCRIPT.NTF"
 $di2.pConfigFile  = "$driverDir\PS5UI.DLL"
-$drvOk = [Win32Print]::AddPrinterDriverEx($null, 2, [ref]$di2, 20)
+$drvOk = [Win32PrintInstall]::AddPrinterDriverEx($null, 2, [ref]$di2, 20)
 if (-not $drvOk) {
     $drvErr = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
     Write-Host "ERRO: AddPrinterDriverEx falhou (Win32 erro $drvErr)"
     exit 1
 }
-# PRINTER_DRIVER_XPS (0x2) — habilita o Print Ticket Provider do PSCRIPT5
 Set-ItemProperty $DriverKey -Name "PrinterDriverAttributes" -Value 2 -Type DWord
 Write-Host "  OK - driver '$DriverName' registrado via AddPrinterDriverEx"
 
+# ── 6. Instala PPD ────────────────────────────────────────────────────────
 Write-Host "Instalando PPD do driver..."
 $PpdSource = Join-Path $ScriptDir "MEDDRIVE.PPD"
-$PpdDest   = "C:\Windows\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
+$PpdDest   = "$env:SystemRoot\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
 if (-not (Test-Path $PpdSource)) {
     Write-Host "ERRO: MEDDRIVE.PPD nao encontrado em $PpdSource"
     exit 1
@@ -223,23 +146,22 @@ Copy-Item $PpdSource $PpdDest -Force
 Set-ItemProperty $DriverKey -Name "Dependent Files" -Value @("MEDDRIVE.PPD", "") -Type MultiString
 Write-Host "  OK - PPD copiado e registrado em Dependent Files"
 
+# ── 7. Reinicia Spooler para enumerar o driver ────────────────────────────
 Write-Host "Reiniciando o Spooler para enumerar o driver..."
 Restart-Service -Name Spooler -Force
 Start-Sleep -Seconds 3
 
-# Verifica se o spooler enumerou o driver — equivalente a Get-PrinterDriver no Win10,
-# sem depender do modulo PrintManagement ausente no Win7.
 $needed   = [uint32]0
 $returned = [uint32]0
-[Win32Print]::EnumPrinterDrivers($null, "Windows x64", 1, [IntPtr]::Zero, 0, [ref]$needed, [ref]$returned) | Out-Null
+[Win32PrintInstall]::EnumPrinterDrivers($null, "Windows x64", 1, [IntPtr]::Zero, 0, [ref]$needed, [ref]$returned) | Out-Null
 $buf = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([int]$needed)
 $driverFound = $false
 try {
-    if ([Win32Print]::EnumPrinterDrivers($null, "Windows x64", 1, $buf, $needed, [ref]$needed, [ref]$returned)) {
-        $sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32Print+DRIVER_INFO_1])
+    if ([Win32PrintInstall]::EnumPrinterDrivers($null, "Windows x64", 1, $buf, $needed, [ref]$needed, [ref]$returned)) {
+        $sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32PrintInstall+DRIVER_INFO_1])
         for ($i = 0; $i -lt [int]$returned; $i++) {
             $ptr  = [IntPtr]($buf.ToInt64() + $i * $sz)
-            $info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($ptr, [type][Win32Print+DRIVER_INFO_1])
+            $info = [System.Runtime.InteropServices.Marshal]::PtrToStructure($ptr, [type][Win32PrintInstall+DRIVER_INFO_1])
             $name = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($info.pName)
             if ($name -eq $DriverName) { $driverFound = $true; break }
         }
@@ -253,69 +175,22 @@ if (-not $driverFound) {
 }
 Write-Host "  OK - driver '$DriverName' reconhecido pelo spooler"
 
-Write-Host "Registrando porta via AddPortExW..."
-$pi1       = New-Object Win32Print+PORT_INFO_1
-$pi1.pName = $PortName
-$portOk = [Win32Print]::AddPortEx($null, 1, [ref]$pi1, $MonitorName)
-if (-not $portOk) {
-    $portErr = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    Write-Host "  AVISO: AddPortExW falhou (Win32 erro $portErr)"
-} else {
-    Write-Host "  OK - porta registrada via AddPortExW"
-}
-
-# Verifica se a impressora ja existe — cancela em vez de sobrescrever, pois
-# DeletePrinter+AddPrinter falhava ao tentar recriar a impressora.
-$hExisting = [IntPtr]::Zero
-if ([Win32Print]::OpenPrinter($PrinterName, [ref]$hExisting, [IntPtr]::Zero)) {
-    [Win32Print]::ClosePrinter($hExisting) | Out-Null
-    Write-Host "ERRO: impressora '$PrinterName' ja existe. Remova-a manualmente antes de reinstalar."
-    exit 1
-}
-
-$pi2                 = New-Object Win32Print+PRINTER_INFO_2
-$pi2.pPrinterName    = $PrinterName
-$pi2.pPortName       = $PortName
-$pi2.pDriverName     = $DriverName
-$pi2.pPrintProcessor = "winprint"
-$pi2.pDatatype       = "RAW"
-$pi2.Attributes      = 0x40
-
-Write-Host "Registrando impressora via AddPrinterW..."
-Write-Host "  pPrinterName   : $($pi2.pPrinterName)"
-Write-Host "  pPortName      : $($pi2.pPortName)"
-Write-Host "  pDriverName    : $($pi2.pDriverName)"
-Write-Host "  pPrintProcessor: $($pi2.pPrintProcessor)"
-Write-Host "  pDatatype      : $($pi2.pDatatype)"
-
-$maxAttempts = 5
-$attempt     = 0
-$success     = $false
-$erroMsg     = ""
-while ($attempt -lt $maxAttempts -and -not $success) {
-    $hPrinter = [Win32Print]::AddPrinter($null, 2, [ref]$pi2)
-    if ($hPrinter -ne [IntPtr]::Zero) {
-        [Win32Print]::ClosePrinter($hPrinter) | Out-Null
-        $success = $true
-    } else {
-        $attempt++
-        $win32Err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        $erroMsg  = "Win32 erro $win32Err"
-        Write-Host "  Tentativa $attempt/$maxAttempts falhou: $erroMsg"
-        if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 3 }
-    }
-}
+# ── 8. Distribui aplicativo e scripts para ProgramData ───────────────────
+Write-Host "Copiando aplicativo para $AppDir..."
+New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
+Copy-Item (Join-Path $ScriptDir "add-printer.ps1")     "$AppDir\add-printer.ps1"     -Force
+Copy-Item (Join-Path $ScriptDir "create-profile.ps1")  "$AppDir\create-profile.ps1"  -Force
+Copy-Item (Join-Path $ScriptDir "edit-profile.ps1")    "$AppDir\edit-profile.ps1"    -Force
+Copy-Item (Join-Path $ScriptDir "edit-printer.ps1")    "$AppDir\edit-printer.ps1"    -Force
+Copy-Item (Join-Path $ScriptDir "remove-printer.ps1")  "$AppDir\remove-printer.ps1"  -Force
+Copy-Item (Join-Path $ScriptDir "remove-profile.ps1")  "$AppDir\remove-profile.ps1"  -Force
+Copy-Item (Join-Path $ScriptDir "MEDDRIVE.PPD")        "$AppDir\MEDDRIVE.PPD"        -Force
+Copy-Item (Join-Path $ScriptDir "MedDriveManager.exe") "$AppDir\MedDriveManager.exe" -Force
+Trace-Step "aplicativo e scripts distribuidos"
 
 Write-Host ""
-if ($success) {
-    Write-Host "Instalacao concluida!"
-    Write-Host "  Impressora : $PrinterName"
-    Write-Host "  Porta      : $PortName"
-    Write-Host "  Saida      : $OutputPath"
-    Write-Host "  Ghostscript: $GhostscriptPath"
-} else {
-    Write-Host "ERRO: instalacao falhou ao registrar a impressora '$PrinterName'."
-    Write-Host "  Motivo     : $erroMsg"
-    Write-Host "  Log da DLL : C:\Windows\Temp\meddrivemon_init.log"
-    exit 1
-}
+Write-Host "Instalacao concluida!"
+Write-Host "  Monitor    : $MonitorName"
+Write-Host "  Driver     : $DriverName"
+Write-Host "  Aplicativo : $AppDir\MedDriveManager.exe"
+Write-Host "  Ghostscript: $GhostscriptPath"
