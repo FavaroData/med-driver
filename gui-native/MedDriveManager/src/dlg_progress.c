@@ -334,19 +334,25 @@ static INT_PTR CALLBACK ProgressDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
 
 /* ─── API publica ──────────────────────────────────────────────────────── */
 
+static void build_script_path(wchar_t *out, const wchar_t *name)
+{
+    GetModuleFileNameW(NULL, out, MAX_PATH);
+    wchar_t *slash = wcsrchr(out, L'\\');
+    if (slash) *(slash + 1) = L'\0';
+    wcsncat_s(out, MAX_PATH, L"conf\\", _TRUNCATE);
+    wcsncat_s(out, MAX_PATH, name, _TRUNCATE);
+}
+
 BOOL dlg_progress_run(HWND parent,
                       const wchar_t *printerName,
                       const wchar_t *profileName) {
     wchar_t scriptPath[MAX_PATH];
-    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
-    wchar_t *slash = wcsrchr(scriptPath, L'\\');
-    if (slash) *(slash + 1) = L'\0';
-    wcsncat_s(scriptPath, MAX_PATH, L"add-printer.ps1", _TRUNCATE);
+    build_script_path(scriptPath, L"add-printer.ps1");
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo add-printer.ps1 não encontrado.\r\n"
-            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo conf\\add-printer.ps1 não encontrado.\r\n"
+            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }
@@ -370,15 +376,12 @@ BOOL dlg_progress_run(HWND parent,
 
 BOOL dlg_progress_remove(HWND parent, const wchar_t *printerName) {
     wchar_t scriptPath[MAX_PATH];
-    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
-    wchar_t *slash = wcsrchr(scriptPath, L'\\');
-    if (slash) *(slash + 1) = L'\0';
-    wcsncat_s(scriptPath, MAX_PATH, L"remove-printer.ps1", _TRUNCATE);
+    build_script_path(scriptPath, L"remove-printer.ps1");
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo remove-printer.ps1 não encontrado.\r\n"
-            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo conf\\remove-printer.ps1 não encontrado.\r\n"
+            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }
@@ -407,15 +410,12 @@ BOOL dlg_progress_edit_profile(HWND parent,
                                 BOOL openAfterGenerate,
                                 BOOL overwriteFile) {
     wchar_t scriptPath[MAX_PATH];
-    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
-    wchar_t *slash = wcsrchr(scriptPath, L'\\');
-    if (slash) *(slash + 1) = L'\0';
-    wcsncat_s(scriptPath, MAX_PATH, L"edit-profile.ps1", _TRUNCATE);
+    build_script_path(scriptPath, L"edit-profile.ps1");
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo edit-profile.ps1 não encontrado.\r\n"
-            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo conf\\edit-profile.ps1 não encontrado.\r\n"
+            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }
@@ -443,15 +443,12 @@ BOOL dlg_progress_edit_profile(HWND parent,
 
 BOOL dlg_progress_remove_profile(HWND parent, const wchar_t *profileName) {
     wchar_t scriptPath[MAX_PATH];
-    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
-    wchar_t *slash = wcsrchr(scriptPath, L'\\');
-    if (slash) *(slash + 1) = L'\0';
-    wcsncat_s(scriptPath, MAX_PATH, L"remove-profile.ps1", _TRUNCATE);
+    build_script_path(scriptPath, L"remove-profile.ps1");
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo remove-profile.ps1 não encontrado.\r\n"
-            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo conf\\remove-profile.ps1 não encontrado.\r\n"
+            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }
@@ -477,15 +474,12 @@ BOOL dlg_progress_edit_printer(HWND parent,
                                 const wchar_t *newPrinterName,
                                 const wchar_t *profileName) {
     wchar_t scriptPath[MAX_PATH];
-    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
-    wchar_t *slash = wcsrchr(scriptPath, L'\\');
-    if (slash) *(slash + 1) = L'\0';
-    wcsncat_s(scriptPath, MAX_PATH, L"edit-printer.ps1", _TRUNCATE);
+    build_script_path(scriptPath, L"edit-printer.ps1");
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo edit-printer.ps1 não encontrado.\r\n"
-            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo conf\\edit-printer.ps1 não encontrado.\r\n"
+            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }
@@ -512,15 +506,12 @@ BOOL dlg_progress_create_profile(HWND parent,
                                   BOOL openAfterGenerate,
                                   BOOL overwriteFile) {
     wchar_t scriptPath[MAX_PATH];
-    GetModuleFileNameW(NULL, scriptPath, MAX_PATH);
-    wchar_t *slash = wcsrchr(scriptPath, L'\\');
-    if (slash) *(slash + 1) = L'\0';
-    wcsncat_s(scriptPath, MAX_PATH, L"create-profile.ps1", _TRUNCATE);
+    build_script_path(scriptPath, L"create-profile.ps1");
 
     if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(parent,
-            L"Arquivo create-profile.ps1 não encontrado.\r\n"
-            L"Certifique-se de que está na mesma pasta que MedDriveManager.exe.",
+            L"Arquivo conf\\create-profile.ps1 não encontrado.\r\n"
+            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
             L"Erro", MB_ICONERROR | MB_OK);
         return FALSE;
     }

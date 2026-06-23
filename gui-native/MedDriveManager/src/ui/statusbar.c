@@ -40,6 +40,11 @@ static LRESULT CALLBACK SbWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         RECT rt = {36, rc.top, rc.right - 8, rc.bottom};
         DrawTextW(dc, s_sbText, -1, &rt,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        /* Copyright à direita */
+        RECT rr = {rc.left, rc.top, rc.right - 12, rc.bottom};
+        DrawTextW(dc, L"StachIt \xA9 2026", -1, &rr,
+                  DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(dc, of);
 
         EndPaint(hwnd, &ps);

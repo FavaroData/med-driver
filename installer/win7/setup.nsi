@@ -51,14 +51,15 @@ Section "Instalar Meddrive Printer" SecInstall
     File "..\..\meddrivemon.dll"
     SetOutPath "$INSTDIR\installer"
     File "MEDDRIVE.PPD"
-    File "install.ps1"
+    File "install_helper.exe"
+    File "..\win10-11\x64\Debug\MedDriveManager.exe"
+    SetOutPath "$INSTDIR\installer\conf"
     File "add-printer.ps1"
     File "create-profile.ps1"
     File "edit-profile.ps1"
     File "edit-printer.ps1"
     File "remove-printer.ps1"
     File "remove-profile.ps1"
-    File "..\win10-11\x64\Debug\MedDriveManager.exe"
 
     ; lê ProgramData do ambiente Windows em tempo de execução
     ReadEnvStr $R0 "ProgramData"
@@ -108,18 +109,19 @@ Section "Instalar Meddrive Printer" SecInstall
 
     RMDir /r "$INSTDIR\DLL"
 
-    DetailPrint "Executando instalador PowerShell..."
-    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1"'
+    DetailPrint "Executando instalador..."
+    nsExec::ExecToLog '"$INSTDIR\installer\install_helper.exe" "$INSTDIR\installer"'
     Pop $0
 
-    ; limpa temporários (arquivos já copiados para ProgramData pelo install.ps1)
-    Delete "$INSTDIR\installer\install.ps1"
-    Delete "$INSTDIR\installer\add-printer.ps1"
-    Delete "$INSTDIR\installer\create-profile.ps1"
-    Delete "$INSTDIR\installer\edit-profile.ps1"
-    Delete "$INSTDIR\installer\edit-printer.ps1"
-    Delete "$INSTDIR\installer\remove-printer.ps1"
-    Delete "$INSTDIR\installer\remove-profile.ps1"
+    ; limpa temporários (arquivos já copiados para ProgramData pelo install_helper.exe)
+    Delete "$INSTDIR\installer\install_helper.exe"
+    Delete "$INSTDIR\installer\conf\add-printer.ps1"
+    Delete "$INSTDIR\installer\conf\create-profile.ps1"
+    Delete "$INSTDIR\installer\conf\edit-profile.ps1"
+    Delete "$INSTDIR\installer\conf\edit-printer.ps1"
+    Delete "$INSTDIR\installer\conf\remove-printer.ps1"
+    Delete "$INSTDIR\installer\conf\remove-profile.ps1"
+    RMDir  "$INSTDIR\installer\conf"
     Delete "$INSTDIR\installer\MedDriveManager.exe"
     Delete "$INSTDIR\installer\MEDDRIVE.PPD"
     RMDir  "$INSTDIR\installer"

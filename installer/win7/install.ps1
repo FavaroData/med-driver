@@ -13,14 +13,8 @@ function Trace-Step($msg) { Write-Output "CHECKPOINT: $msg" }
 
 Trace-Step "inicio do script"
 
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Trace-Step "processo nao elevado, relancando via RunAs"
-    $scriptPath = $MyInvocation.MyCommand.Path
-    $arguments  = "-ExecutionPolicy Bypass -File `"$scriptPath`""
-    Start-Process powershell -Verb RunAs -ArgumentList $arguments -Wait
-    exit $LASTEXITCODE
-}
-Trace-Step "processo elevado"
+$ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
+Trace-Step "ScriptDir resolvido: $ScriptDir"
 
 Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_install.log" -Force
 Trace-Step "Start-Transcript OK"
@@ -29,9 +23,6 @@ $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.e
 $AppDir          = "$env:ProgramData\Meddrive Printer"
 
 $ErrorActionPreference = "Stop"
-Trace-Step "resolvendo ScriptDir a partir de $($MyInvocation.MyCommand.Path)"
-$ScriptDir = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
-Trace-Step "ScriptDir resolvido: $ScriptDir"
 
 $DllSource = Join-Path $ScriptDir "..\meddrivemon.dll"
 if (-not (Test-Path $DllSource)) {
