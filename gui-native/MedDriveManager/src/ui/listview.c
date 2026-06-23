@@ -169,7 +169,7 @@ HWND listview_create_profile(HWND hwndParent, HINSTANCE hInst, int x, int y, int
     s_colIcoProfiles[2] = &g_icoFolder16;
     s_colIcoProfiles[3] = &g_icoInfo16;
 
-    static const wchar_t *names[4] = {L"Nome", L"Padrão do arquivo", L"Pasta de destino", L"Estratégia"};
+    static const wchar_t *names[4] = {L"Nome", L"Nome do arquivo", L"Pasta de destino", L"Caso o arquivo já exista"};
     return create_lv(hwndParent, hInst, x, y, w, h,
                      IDC_PROFILE_LIST, 4,
                      names, COL_W_PROFILES, s_colIcoProfiles);

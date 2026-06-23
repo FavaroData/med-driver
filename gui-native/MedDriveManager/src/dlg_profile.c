@@ -241,7 +241,7 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 return TRUE;
             }
             if (s_entry->outputBaseName[0] == L'\0') {
-                MessageBoxW(hwnd, L"O padrão do arquivo não pode estar vazio.",
+                MessageBoxW(hwnd, L"O nome do arquivo não pode estar vazio.",
                             L"Campo obrigatório", MB_ICONWARNING | MB_OK);
                 SetFocus(GetDlgItem(hwnd, IDC_EDIT_PROFILE_BASENAME));
                 return TRUE;

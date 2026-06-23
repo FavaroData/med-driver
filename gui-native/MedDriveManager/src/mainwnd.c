@@ -558,7 +558,7 @@ static void paint_col1(HDC dc, int x, int y, int w, int panH) {
     draw_col_title(dc, cx, y + 8, cw, L"DETALHES DO PERFIL", &cy);
 
     cy = draw_prop_row(dc, cx, cy, cw, g_icoSync20,
-        L"Estratégia",
+        L"Caso o arquivo já exista",
         p->overwriteFile ? L"Sobrescrever" : L"Incrementar",
         p->overwriteFile ? CLR_RED : CLR_GREEN, TRUE);
 
@@ -581,7 +581,7 @@ static void paint_col1(HDC dc, int x, int y, int w, int panH) {
         L"Pasta de destino", p->outputPath, CLR_ACCENT);
 
     draw_prop_path_row(dc, cx, cy, cw, g_icoDocument16,
-        L"Padrão do nome do arquivo", p->outputBaseName, CLR_ACCENT);
+        L"Nome do arquivo", p->outputBaseName, CLR_ACCENT);
 }
 
 /* Coluna 2 — Variáveis utilizadas + preview do nome gerado */
