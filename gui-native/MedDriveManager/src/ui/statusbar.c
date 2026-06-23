@@ -20,15 +20,13 @@ static LRESULT CALLBACK SbWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         RECT rc; GetClientRect(hwnd, &rc);
 
         /* Fundo */
-        HBRUSH hbr = CreateSolidBrush(CLR_STATUSBAR_BG);
-        FillRect(dc, &rc, hbr);
-        DeleteObject(hbr);
+        FillRect(dc, &rc, g_hbrSecondary);
 
-        /* Linha superior azul (2px) */
-        HBRUSH hbl = CreateSolidBrush(CLR_ACCENT);
-        RECT rl = {rc.left, rc.top, rc.right, rc.top + 2};
-        FillRect(dc, &rl, hbl);
-        DeleteObject(hbl);
+        /* Linha superior (1px borda) */
+        HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
+        RECT rl = {rc.left, rc.top, rc.right, rc.top + 1};
+        FillRect(dc, &rl, hbrd);
+        DeleteObject(hbrd);
 
         /* Ícone info */
         if (g_icoInfo16)
@@ -78,5 +76,10 @@ void statusbar_set_text(HWND hwndSb, int count) {
         _snwprintf_s(s_sbText, 128, _TRUNCATE, L"1 impressora cadastrada");
     else
         _snwprintf_s(s_sbText, 128, _TRUNCATE, L"%d impressoras cadastradas", count);
+    InvalidateRect(hwndSb, NULL, TRUE);
+}
+
+void statusbar_set_text_raw(HWND hwndSb, const wchar_t *text) {
+    wcsncpy_s(s_sbText, 128, text, _TRUNCATE);
     InvalidateRect(hwndSb, NULL, TRUE);
 }

@@ -179,13 +179,17 @@ static void draw_close_btn(DRAWITEMSTRUCT *di) {
             || GetWindowLongPtrW(di->hwndItem, GWLP_USERDATA) != 0;
     BOOL sel = (di->itemState & ODS_SELECTED) != 0;
 
-    COLORREF bg = d   ? CLR_BTN_SECONDARY :
-                  sel ? CLR_CARD          :
-                  hot ? CLR_BTN_SEC_HOV   : CLR_BTN_SECONDARY;
+    COLORREF bg = d   ? CLR_BTN_SEC_HOV  :
+                  sel ? CLR_BTN_SEC_HOV  :
+                  hot ? CLR_BTN_SEC_HOV  : CLR_BTN_SECONDARY;
 
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);
     DeleteObject(hbr);
+
+    HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
+    FrameRect(dc, &rc, hbrd);
+    DeleteObject(hbrd);
 
     wchar_t txt[64];
     GetWindowTextW(di->hwndItem, txt, 64);

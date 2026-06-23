@@ -13,20 +13,12 @@ static const wchar_t *NAV_LABELS[NAV_COUNT] = {
 
 void navbar_paint(HDC dc, int clientW, int activeTab) {
     RECT rcBar = {0, TITLEBAR_H, clientW, TITLEBAR_H + NAVBAR_H};
-    HBRUSH hbr = CreateSolidBrush(CLR_BG_SECONDARY);
-    FillRect(dc, &rcBar, hbr);
-    DeleteObject(hbr);
+    FillRect(dc, &rcBar, g_hbrPrimary);
 
     for (int i = 0; i < NAV_COUNT; i++) {
         RECT rt = {i * NAV_TAB_W, TITLEBAR_H,
                    (i + 1) * NAV_TAB_W, TITLEBAR_H + NAVBAR_H};
         BOOL active = (i == activeTab);
-
-        if (active) {
-            HBRUSH ha = CreateSolidBrush(CLR_CARD);
-            FillRect(dc, &rt, ha);
-            DeleteObject(ha);
-        }
 
         /* Ícone (20px centrado verticalmente) */
         HICON ico = (i == 0) ? g_icoFolder20
@@ -39,18 +31,18 @@ void navbar_paint(HDC dc, int clientW, int activeTab) {
         }
 
         /* Texto */
-        SetTextColor(dc, active ? CLR_TEXT_PRIMARY : CLR_TEXT_SECONDARY);
+        SetTextColor(dc, active ? CLR_ACCENT : CLR_TEXT_SECONDARY);
         SetBkMode(dc, TRANSPARENT);
-        HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+        HFONT of = (HFONT)SelectObject(dc, active ? g_fontContent : g_fontSmall);
         RECT rtxt = {rt.left + 38, rt.top, rt.right - 4, rt.bottom};
         DrawTextW(dc, NAV_LABELS[i], -1, &rtxt,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(dc, of);
 
-        /* Linha azul inferior na aba ativa */
+        /* Linha azul inferior na aba ativa (3px) */
         if (active) {
             HBRUSH hbl = CreateSolidBrush(CLR_ACCENT);
-            RECT rl = {rt.left, rt.bottom - 2, rt.right, rt.bottom};
+            RECT rl = {rt.left, rt.bottom - 3, rt.right, rt.bottom};
             FillRect(dc, &rl, hbl);
             DeleteObject(hbl);
         }

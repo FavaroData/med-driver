@@ -58,15 +58,22 @@ BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
 
     COLORREF bg;
     if (dis_state)
-        bg = CLR_BTN_SECONDARY;
+        bg = CLR_BTN_SEC_HOV;
     else if (style == BTN_STYLE_PRIMARY)
-        bg = sel ? CLR_ACCENT : hot ? CLR_BTN_PRIMARY_HOV : CLR_BTN_PRIMARY;
+        bg = sel ? CLR_ACCENT_HOVER : hot ? CLR_BTN_PRIMARY_HOV : CLR_BTN_PRIMARY;
     else
-        bg = sel ? CLR_CARD : hot ? CLR_BTN_SEC_HOV : CLR_BTN_SECONDARY;
+        bg = sel ? CLR_BTN_SEC_HOV : hot ? CLR_BTN_SEC_HOV : CLR_BTN_SECONDARY;
 
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);
     DeleteObject(hbr);
+
+    /* Borda para botão secundário */
+    if (style == BTN_STYLE_SECONDARY) {
+        HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
+        FrameRect(dc, &rc, hbrd);
+        DeleteObject(hbrd);
+    }
 
     /* Ícone (20px à esquerda do texto) */
     HICON ico = NULL;
@@ -95,7 +102,9 @@ BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
     if (ico)
         DrawIconEx(dc, startX, midY - 10, ico, 20, 20, 0, NULL, DI_NORMAL);
 
-    COLORREF tc = dis_state ? CLR_TEXT_DISABLED : CLR_TEXT_PRIMARY;
+    COLORREF tc = dis_state    ? CLR_TEXT_DISABLED
+                : style == BTN_STYLE_PRIMARY ? RGB(255, 255, 255)
+                :                              CLR_TEXT_PRIMARY;
     SetTextColor(dc, tc);
     SetBkMode(dc, TRANSPARENT);
     of = (HFONT)SelectObject(dc, g_fontContent);

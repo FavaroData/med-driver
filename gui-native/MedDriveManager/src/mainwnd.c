@@ -19,8 +19,14 @@
 
 #define MAX_PRINTERS 512
 
-/* ── Subtítulo da aba Perfis ────────────────────────────────────────── */
-#define SUBTITLE_H 28
+/* ── Subtítulo (seção) ───────────────────────────────────────────────── */
+#define SUBTITLE_H  24
+
+/* ── Layout inline da aba Perfis ────────────────────────────────────── */
+#define PROF_SUBLABEL_Y  (TITLEBAR_H + NAVBAR_H + SUBTITLE_H + 4)  /* "Perfil selecionado:" */
+#define PROF_COMBO_Y     (PROF_SUBLABEL_Y + 16)                     /* ComboBox              */
+#define PROF_BTN_Y       (PROF_COMBO_Y + 28)                        /* botões inline         */
+#define PROF_PANEL_Y     (PROF_BTN_Y + BTN_H + 10)                  /* painel 3 colunas      */
 
 /* ── Estado global ──────────────────────────────────────────────────── */
 static HWND g_hwndMain;
@@ -35,7 +41,7 @@ static PrinterEntry g_printers[MAX_PRINTERS];
 static int  g_count = 0;
 
 /* Perfis */
-static HWND g_hwndProfileList;
+static HWND g_hwndCombo;
 static HWND g_hwndBtnNewProfile;
 static HWND g_hwndBtnEditProfile;
 static HWND g_hwndBtnDupProfile;
@@ -154,21 +160,25 @@ static void on_remove(HWND hwnd) {
 
 /* ── Helpers de negócio — Perfis ─────────────────────────────────────── */
 static void profile_refresh(void) {
-    ListView_DeleteAllItems(g_hwndProfileList);
-    for (int i = 0; i < g_profileCount; i++) {
-        LVITEMW lvi = {0};
-        lvi.mask    = LVIF_TEXT;
-        lvi.iItem   = i;
-        lvi.pszText = g_profiles[i].name;
-        ListView_InsertItem(g_hwndProfileList, &lvi);
+    if (!g_hwndCombo) return;
+    int prev = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
+    SendMessageW(g_hwndCombo, CB_RESETCONTENT, 0, 0);
+    for (int i = 0; i < g_profileCount; i++)
+        SendMessageW(g_hwndCombo, CB_ADDSTRING, 0, (LPARAM)g_profiles[i].name);
+    int n = (int)SendMessageW(g_hwndCombo, CB_GETCOUNT, 0, 0);
+    if (n > 0)
+        SendMessageW(g_hwndCombo, CB_SETCURSEL,
+                     (prev >= 0 && prev < n) ? (WPARAM)prev : 0, 0);
 
-        ListView_SetItemText(g_hwndProfileList, i, 1, g_profiles[i].outputBaseName);
-        ListView_SetItemText(g_hwndProfileList, i, 2, g_profiles[i].outputPath);
-
-        wchar_t *estrategia = g_profiles[i].overwriteFile ? L"Sobrescrever" : L"Incrementar";
-        ListView_SetItemText(g_hwndProfileList, i, 3, estrategia);
+    /* Statusbar: exibe contagem de perfis na aba Perfis */
+    if (g_activeTab == 0 && g_hwndStatus) {
+        wchar_t t[128];
+        if (g_profileCount == 1)
+            _snwprintf_s(t, 128, _TRUNCATE, L"1 perfil cadastrado");
+        else
+            _snwprintf_s(t, 128, _TRUNCATE, L"%d perfis cadastrados", g_profileCount);
+        statusbar_set_text_raw(g_hwndStatus, t);
     }
-    statusbar_set_text(g_hwndStatus, g_count);
     InvalidateRect(g_hwndMain, NULL, FALSE);
 }
 
@@ -189,7 +199,7 @@ static void switch_tab(int tab) {
     BOOL isPerfis      = (tab == 0);
     BOOL isImpressoras = (tab == 1);
 
-    ShowWindow(g_hwndProfileList,    isPerfis      ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndCombo,          isPerfis      ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnNewProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnEditProfile, isPerfis      ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnDupProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
@@ -199,6 +209,20 @@ static void switch_tab(int tab) {
     ShowWindow(g_hwndBtnAdd,         isImpressoras ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnRemove,      isImpressoras ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnRefresh,     isImpressoras ? SW_SHOW : SW_HIDE);
+
+    /* Statusbar: conteúdo depende da aba */
+    if (g_hwndStatus) {
+        if (isPerfis) {
+            wchar_t t[128];
+            if (g_profileCount == 1)
+                _snwprintf_s(t, 128, _TRUNCATE, L"1 perfil cadastrado");
+            else
+                _snwprintf_s(t, 128, _TRUNCATE, L"%d perfis cadastrados", g_profileCount);
+            statusbar_set_text_raw(g_hwndStatus, t);
+        } else {
+            statusbar_set_text(g_hwndStatus, g_count);
+        }
+    }
 
     InvalidateRect(g_hwndMain, NULL, TRUE);
 }
@@ -218,7 +242,7 @@ static void on_new_profile(HWND hwnd) {
 }
 
 static void on_edit_profile(HWND hwnd) {
-    int sel = ListView_GetNextItem(g_hwndProfileList, -1, LVNI_SELECTED);
+    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= g_profileCount) return;
 
     ProfileEntry edited = g_profiles[sel];
@@ -261,7 +285,7 @@ static void on_edit_profile(HWND hwnd) {
 }
 
 static void on_dup_profile(HWND hwnd) {
-    int sel = ListView_GetNextItem(g_hwndProfileList, -1, LVNI_SELECTED);
+    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= g_profileCount) return;
 
     ProfileEntry copy = g_profiles[sel];
@@ -282,7 +306,7 @@ static void on_dup_profile(HWND hwnd) {
 }
 
 static void on_del_profile(HWND hwnd) {
-    int sel = ListView_GetNextItem(g_hwndProfileList, -1, LVNI_SELECTED);
+    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= g_profileCount) return;
 
     /* Verifica impressoras vinculadas — bloqueia se houver */
@@ -338,6 +362,294 @@ static void paint_empty_state(HDC dc, RECT rcContent) {
     SelectObject(dc, of);
 }
 
+/* ── Painel de perfil: tokens conhecidos ─────────────────────────────── */
+static const struct { const wchar_t *tok; const wchar_t *desc; } s_tokens[] = {
+    { L"{n}",         L"Contador sequencial"      },
+    { L"{nn}",        L"Contador 2 dígitos"       },
+    { L"{nnn}",       L"Contador 3 dígitos"       },
+    { L"{data}",      L"Data atual (AAAA-MM-DD)"  },
+    { L"{hora}",      L"Hora atual (HH-MM-SS)"    },
+    { L"{documento}", L"Nome do documento"         },
+};
+#define KNOWN_TOKEN_COUNT 6
+
+/* Gera um nome de arquivo de exemplo substituindo tokens pelos valores atuais. */
+static void make_preview(const ProfileEntry *p, wchar_t *out, int cch) {
+    SYSTEMTIME st; GetLocalTime(&st);
+    wchar_t dateStr[16], timeStr[16];
+    _snwprintf_s(dateStr, 16, _TRUNCATE, L"%04d-%02d-%02d",
+                 st.wYear, st.wMonth, st.wDay);
+    _snwprintf_s(timeStr, 16, _TRUNCATE, L"%02d-%02d-%02d",
+                 st.wHour, st.wMinute, st.wSecond);
+
+    const wchar_t *tmpl = p->outputBaseName;
+    wchar_t buf[MAX_PATH] = {0};
+    int di = 0;
+    const wchar_t *q = tmpl;
+
+    struct { const wchar_t *tok; const wchar_t *val; } subs[3] = {
+        { L"{data}",      dateStr   },
+        { L"{hora}",      timeStr   },
+        { L"{documento}", L"Laudo"  },
+    };
+
+    while (*q && di < MAX_PATH - 1) {
+        if (*q != L'{') { buf[di++] = *q++; continue; }
+
+        BOOL matched = FALSE;
+        for (int k = 0; k < 3 && !matched; k++) {
+            int tlen = (int)wcslen(subs[k].tok);
+            if (wcsncmp(q, subs[k].tok, (size_t)tlen) == 0) {
+                for (const wchar_t *v = subs[k].val; *v && di < MAX_PATH-1; v++)
+                    buf[di++] = *v;
+                q += tlen; matched = TRUE;
+            }
+        }
+        if (matched) continue;
+
+        /* {n}, {nn}, {nnn} → contador de exemplo */
+        const wchar_t *r = q + 1;
+        int nc = 0;
+        while (*r == L'n') { nc++; r++; }
+        if (nc > 0 && *r == L'}') {
+            wchar_t nStr[16];
+            _snwprintf_s(nStr, 16, _TRUNCATE, L"%0*d", nc == 1 ? 1 : nc, 1);
+            for (const wchar_t *v = nStr; *v && di < MAX_PATH-1; v++)
+                buf[di++] = *v;
+            q = r + 1; continue;
+        }
+        buf[di++] = *q++;
+    }
+    buf[di] = L'\0';
+    _snwprintf_s(out, cch, _TRUNCATE, L"%s.pdf", buf);
+}
+
+/* Desenha uma linha label + valor. Retorna o próximo Y. */
+static int draw_prop(HDC dc, int x, int y, int w,
+                     const wchar_t *key, const wchar_t *val, COLORREF valClr) {
+    SetBkMode(dc, TRANSPARENT);
+    int half = w * 45 / 100;
+
+    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    RECT rk = {x, y, x + half, y + 18};
+    DrawTextW(dc, key, -1, &rk, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SelectObject(dc, g_fontContent);
+    SetTextColor(dc, valClr);
+    RECT rv = {x + half, y, x + w, y + 18};
+    DrawTextW(dc, val, -1, &rv, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SelectObject(dc, of);
+    return y + 20;
+}
+
+static void draw_col_title(HDC dc, int x, int y, int w, const wchar_t *title, int *cy_out) {
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, CLR_ACCENT);
+    HFONT of = (HFONT)SelectObject(dc, g_fontSubtitle);
+    RECT rt = {x, y, x + w, y + 18};
+    DrawTextW(dc, title, -1, &rt, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, of);
+    int cy = y + 22;
+
+    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN op = (HPEN)SelectObject(dc, hp);
+    MoveToEx(dc, x, cy, NULL); LineTo(dc, x + w, cy);
+    SelectObject(dc, op); DeleteObject(hp);
+    *cy_out = cy + 8;
+}
+
+/* Coluna 1 — Detalhes do perfil */
+static void paint_col1(HDC dc, int x, int y, int w, int panH) {
+    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
+    if (sel < 0 || sel >= g_profileCount) return;
+    ProfileEntry *p = &g_profiles[sel];
+
+    int pad = 12;
+    int cx = x + pad, cw = w - pad * 2;
+    int cy;
+    draw_col_title(dc, cx, y + 8, cw, L"DETALHES DO PERFIL", &cy);
+
+    cy = draw_prop(dc, cx, cy, cw,
+                   L"Estratégia:",
+                   p->overwriteFile ? L"Sobrescrever" : L"Incrementar",
+                   CLR_TEXT_PRIMARY);
+    cy = draw_prop(dc, cx, cy, cw,
+                   L"Abrir após gerar:",
+                   p->openAfterGenerate ? L"Sim" : L"Não",
+                   p->openAfterGenerate ? CLR_GREEN : CLR_RED);
+    cy = draw_prop(dc, cx, cy, cw,
+                   L"Sobrescrever arquivo:",
+                   p->overwriteFile ? L"Sim" : L"Não",
+                   p->overwriteFile ? CLR_GREEN : CLR_RED);
+
+    cy += 4;
+    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN op = (HPEN)SelectObject(dc, hp);
+    MoveToEx(dc, cx, cy, NULL); LineTo(dc, cx + cw, cy);
+    SelectObject(dc, op); DeleteObject(hp);
+    cy += 8;
+
+    SetBkMode(dc, TRANSPARENT);
+    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    RECT rl1 = {cx, cy, cx + cw, cy + 14};
+    DrawTextW(dc, L"Pasta de destino:", -1, &rl1, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    cy += 14;
+    SelectObject(dc, g_fontContent);
+    SetTextColor(dc, CLR_TEXT_PRIMARY);
+    RECT rp = {cx, cy, cx + cw, cy + 28};
+    DrawTextW(dc, p->outputPath, -1, &rp,
+              DT_LEFT | DT_TOP | DT_WORDBREAK | DT_PATH_ELLIPSIS);
+    cy += 32;
+
+    SelectObject(dc, g_fontSmall);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    RECT rl2 = {cx, cy, cx + cw, cy + 14};
+    DrawTextW(dc, L"Padrão do nome:", -1, &rl2, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    cy += 14;
+    SelectObject(dc, g_fontContent);
+    SetTextColor(dc, CLR_ACCENT);
+    RECT rbn = {cx, cy, cx + cw, cy + 18};
+    DrawTextW(dc, p->outputBaseName, -1, &rbn,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SelectObject(dc, of);
+}
+
+/* Coluna 2 — Preview do arquivo */
+static void paint_col2(HDC dc, int x, int y, int w, int panH) {
+    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
+    if (sel < 0 || sel >= g_profileCount) return;
+    ProfileEntry *p = &g_profiles[sel];
+
+    int pad = 12;
+    int cx = x + pad, cw = w - pad * 2;
+    int cy;
+    draw_col_title(dc, cx, y + 8, cw, L"PREVIEW DO ARQUIVO", &cy);
+
+    SYSTEMTIME st; GetLocalTime(&st);
+    wchar_t caption[64];
+    _snwprintf_s(caption, 64, _TRUNCATE, L"Exemplo (hoje às %02d:%02d)",
+                 st.wHour, st.wMinute);
+    SetBkMode(dc, TRANSPARENT);
+    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    RECT rcap = {cx, cy, cx + cw, cy + 14};
+    DrawTextW(dc, caption, -1, &rcap, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, of);
+
+    /* Área central: ícone + nome gerado */
+    int midX = x + w / 2;
+    int midY = y + panH / 2;
+
+    if (g_icoDocument16)
+        DrawIconEx(dc, midX - 16, midY - 32, g_icoDocument16, 32, 32, 0, NULL, DI_NORMAL);
+
+    wchar_t preview[MAX_PATH];
+    make_preview(p, preview, MAX_PATH);
+
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, CLR_GREEN);
+    of = (HFONT)SelectObject(dc, g_fontContent);
+    RECT rfn = {cx, midY + 6, cx + cw, midY + 24};
+    DrawTextW(dc, preview, -1, &rfn,
+              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    SelectObject(dc, of);
+}
+
+/* Coluna 3 — Variáveis utilizadas */
+static void paint_col3(HDC dc, int x, int y, int w, int panH) {
+    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
+    if (sel < 0 || sel >= g_profileCount) return;
+    ProfileEntry *p = &g_profiles[sel];
+
+    int pad = 12;
+    int cx = x + pad, cw = w - pad * 2;
+    int cy;
+    draw_col_title(dc, cx, y + 8, cw, L"VARIÁVEIS UTILIZADAS", &cy);
+
+    int infoBoxH = 38;
+    int infoBoxY = y + panH - infoBoxH - pad;
+
+    for (int i = 0; i < KNOWN_TOKEN_COUNT && cy < infoBoxY - 4; i++) {
+        if (wcsstr(p->outputBaseName, s_tokens[i].tok) == NULL) continue;
+
+        RECT badge = {cx, cy, cx + cw, cy + 36};
+        HBRUSH hbBadge = CreateSolidBrush(CLR_ACCENT_LIGHT);
+        FillRect(dc, &badge, hbBadge);
+        DeleteObject(hbBadge);
+        HBRUSH hbBord = CreateSolidBrush(CLR_BORDER);
+        FrameRect(dc, &badge, hbBord);
+        DeleteObject(hbBord);
+
+        SetBkMode(dc, TRANSPARENT);
+        HFONT of = (HFONT)SelectObject(dc, g_fontContent);
+        SetTextColor(dc, CLR_ACCENT);
+        RECT rtok = {cx + 8, cy + 2, cx + cw - 4, cy + 18};
+        DrawTextW(dc, s_tokens[i].tok, -1, &rtok, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        SelectObject(dc, g_fontSmall);
+        SetTextColor(dc, CLR_TEXT_SECONDARY);
+        RECT rdesc = {cx + 8, cy + 18, cx + cw - 4, cy + 34};
+        DrawTextW(dc, s_tokens[i].desc, -1, &rdesc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+        SelectObject(dc, of);
+        cy += 40;
+    }
+
+    /* Caixa informativa azul clara */
+    RECT infoBox = {cx, infoBoxY, cx + cw, infoBoxY + infoBoxH};
+    HBRUSH hbInfo = CreateSolidBrush(CLR_ACCENT_LIGHT);
+    FillRect(dc, &infoBox, hbInfo);
+    DeleteObject(hbInfo);
+    RECT leftBar = {cx, infoBoxY, cx + 3, infoBoxY + infoBoxH};
+    HBRUSH hbAccent = CreateSolidBrush(CLR_ACCENT);
+    FillRect(dc, &leftBar, hbAccent);
+    DeleteObject(hbAccent);
+
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+    RECT rinfo = {cx + 8, infoBoxY + 2, cx + cw - 4, infoBoxY + infoBoxH};
+    DrawTextW(dc, L"Passe o mouse sobre uma variável para ver a descrição.", -1,
+              &rinfo, DT_LEFT | DT_TOP | DT_WORDBREAK);
+    SelectObject(dc, of);
+}
+
+/* Painel completo de 3 colunas */
+static void paint_profile_panel(HDC dc, int clientW) {
+    int panX = CONTENT_PAD;
+    int panY = PROF_PANEL_Y;
+    int panW = clientW - CONTENT_PAD * 2;
+    int panH = WIN_H - STATUSBAR_H - 6 - panY;
+
+    int colGap = 8;
+    int colW   = (panW - colGap * 2) / 3;
+    int col3W  = panW - colW * 2 - colGap * 2;
+    int col2X  = panX + colW + colGap;
+    int col3X  = col2X + colW + colGap;
+
+    /* Fundo e borda do card */
+    RECT rcPanel = {panX, panY, panX + panW, panY + panH};
+    FillRect(dc, &rcPanel, g_hbrPrimary);
+    HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
+    FrameRect(dc, &rcPanel, hbrd);
+    DeleteObject(hbrd);
+
+    /* Separadores verticais */
+    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN op = (HPEN)SelectObject(dc, hp);
+    MoveToEx(dc, col2X - 1, panY + 8, NULL); LineTo(dc, col2X - 1, panY + panH - 8);
+    MoveToEx(dc, col3X - 1, panY + 8, NULL); LineTo(dc, col3X - 1, panY + panH - 8);
+    SelectObject(dc, op); DeleteObject(hp);
+
+    paint_col1(dc, panX,  panY, colW,  panH);
+    paint_col2(dc, col2X, panY, colW,  panH);
+    paint_col3(dc, col3X, panY, col3W, panH);
+}
+
 /* ── WM_CREATE ───────────────────────────────────────────────────────── */
 static void on_create(HWND hwnd) {
     g_hwndMain = hwnd;
@@ -356,26 +668,29 @@ static void on_create(HWND hwnd) {
 
     int lvX = CONTENT_PAD;
     int lvW = WIN_W - CONTENT_PAD * 2;
-    int btnY = WIN_H - STATUSBAR_H - BTNBAR_H + (BTNBAR_H - BTN_H) / 2;
+    int printerBtnY = WIN_H - STATUSBAR_H - BTNBAR_H + (BTNBAR_H - BTN_H) / 2;
 
-    /* ── ListView de perfis (tab 0, começa visível) ─────────────────── */
-    int lvProfileY = TITLEBAR_H + NAVBAR_H + SUBTITLE_H;
-    int lvProfileH = WIN_H - lvProfileY - BTNBAR_H - STATUSBAR_H - CONTENT_PAD;
-    g_hwndProfileList = listview_create_profile(hwnd, hInst,
-                                                 lvX, lvProfileY, lvW, lvProfileH);
+    /* ── ComboBox de seleção de perfil (tab 0) ──────────────────────── */
+    g_hwndCombo = CreateWindowExW(0, WC_COMBOBOX, NULL,
+        WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_VSCROLL,
+        CONTENT_PAD, PROF_COMBO_Y,
+        WIN_W - CONTENT_PAD * 2, 200,
+        hwnd, (HMENU)(UINT_PTR)IDC_COMBO_PROFILE_SEL, hInst, NULL);
+    SendMessageW(g_hwndCombo, WM_SETFONT, (WPARAM)g_fontContent, TRUE);
 
+    /* ── Botões inline de perfil (tab 0) ────────────────────────────── */
     g_hwndBtnNewProfile = buttons_create(hwnd, hInst, IDC_BTN_NEW_PROFILE,
-                                          L"Novo Perfil", BTN_STYLE_PRIMARY,
-                                          CONTENT_PAD, btnY, BTN_W, BTN_H);
+                                          L"+ Novo Perfil", BTN_STYLE_PRIMARY,
+                                          CONTENT_PAD, PROF_BTN_Y, BTN_W, BTN_H);
     g_hwndBtnEditProfile = buttons_create(hwnd, hInst, IDC_BTN_EDIT_PROFILE,
                                            L"Editar", BTN_STYLE_SECONDARY,
-                                           CONTENT_PAD + BTN_W + 8, btnY, BTN_W, BTN_H);
+                                           CONTENT_PAD + BTN_W + 6, PROF_BTN_Y, BTN_W, BTN_H);
     g_hwndBtnDupProfile = buttons_create(hwnd, hInst, IDC_BTN_DUP_PROFILE,
                                           L"Duplicar", BTN_STYLE_SECONDARY,
-                                          CONTENT_PAD + (BTN_W + 8) * 2, btnY, BTN_W, BTN_H);
+                                          CONTENT_PAD + (BTN_W + 6) * 2, PROF_BTN_Y, BTN_W, BTN_H);
     g_hwndBtnDelProfile = buttons_create(hwnd, hInst, IDC_BTN_DEL_PROFILE,
                                           L"Excluir", BTN_STYLE_SECONDARY,
-                                          CONTENT_PAD + (BTN_W + 8) * 3, btnY, BTN_W, BTN_H);
+                                          CONTENT_PAD + (BTN_W + 6) * 3, PROF_BTN_Y, BTN_W, BTN_H);
 
     /* ── ListView de impressoras (tab 1, começa oculto) ─────────────── */
     int lvY = TITLEBAR_H + NAVBAR_H + SUBTITLE_H;
@@ -384,13 +699,13 @@ static void on_create(HWND hwnd) {
 
     g_hwndBtnAdd = buttons_create(hwnd, hInst, IDC_BTN_ADD,
                                    L"Adicionar", BTN_STYLE_PRIMARY,
-                                   CONTENT_PAD, btnY, BTN_W, BTN_H);
+                                   CONTENT_PAD, printerBtnY, BTN_W, BTN_H);
     g_hwndBtnRemove = buttons_create(hwnd, hInst, IDC_BTN_REMOVE,
                                       L"Remover", BTN_STYLE_SECONDARY,
-                                      CONTENT_PAD + BTN_W + 8, btnY, BTN_W, BTN_H);
+                                      CONTENT_PAD + BTN_W + 8, printerBtnY, BTN_W, BTN_H);
     g_hwndBtnRefresh = buttons_create(hwnd, hInst, IDC_BTN_REFRESH,
                                        L"Atualizar", BTN_STYLE_SECONDARY,
-                                       CONTENT_PAD + (BTN_W + 8) * 2, btnY, BTN_W, BTN_H);
+                                       CONTENT_PAD + (BTN_W + 8) * 2, printerBtnY, BTN_W, BTN_H);
 
     /* Status bar */
     g_hwndStatus = statusbar_create(hwnd, hInst);
@@ -417,24 +732,50 @@ static void on_paint(HWND hwnd) {
     navbar_paint(dc, w, g_activeTab);
 
     int contentTop = TITLEBAR_H + NAVBAR_H;
-    int contentBot  = WIN_H - STATUSBAR_H - BTNBAR_H;
+    int contentBot  = (g_activeTab == 0)
+                    ? WIN_H - STATUSBAR_H
+                    : WIN_H - STATUSBAR_H - BTNBAR_H;
     RECT rcContent = {0, contentTop, w, contentBot};
     FillRect(dc, &rcContent, g_hbrPrimary);
 
-    /* Subtítulo da aba ativa */
+    /* Cabeçalho de seção */
     if (g_activeTab == 0 || g_activeTab == 1) {
         const wchar_t *sub = (g_activeTab == 0) ? L"PERFIS DE IMPRESSÃO"
                                                  : L"IMPRESSORAS CADASTRADAS";
-        SetTextColor(dc, CLR_TEXT_SECONDARY);
+        SetTextColor(dc, CLR_ACCENT);
         SetBkMode(dc, TRANSPARENT);
         HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
-        RECT rcSub = {CONTENT_PAD, contentTop + 8,
+        RECT rcSub = {CONTENT_PAD, contentTop + 6,
                       w - CONTENT_PAD, contentTop + SUBTITLE_H};
         DrawTextW(dc, sub, -1, &rcSub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(dc, of);
     }
 
-    /* Estado vazio da aba Impressoras */
+    /* Aba Perfis: label + painel */
+    if (g_activeTab == 0) {
+        SetTextColor(dc, CLR_TEXT_SECONDARY);
+        SetBkMode(dc, TRANSPARENT);
+        HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+        RECT rcLbl = {CONTENT_PAD, PROF_SUBLABEL_Y,
+                      w - CONTENT_PAD, PROF_COMBO_Y};
+        DrawTextW(dc, L"Perfil selecionado:", -1, &rcLbl,
+                  DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(dc, of);
+
+        if (g_profileCount > 0)
+            paint_profile_panel(dc, w);
+        else {
+            SetTextColor(dc, CLR_TEXT_DISABLED);
+            SetBkMode(dc, TRANSPARENT);
+            of = (HFONT)SelectObject(dc, g_fontSubtitle);
+            RECT rcEmp = {0, PROF_PANEL_Y, w, WIN_H - STATUSBAR_H};
+            DrawTextW(dc, L"Nenhum perfil cadastrado. Clique em '+ Novo Perfil' para começar.",
+                      -1, &rcEmp, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(dc, of);
+        }
+    }
+
+    /* Aba Impressoras: estado vazio */
     if (g_activeTab == 1 && g_count == 0) {
         RECT rcEmp = {CONTENT_PAD, contentTop + CONTENT_PAD,
                       w - CONTENT_PAD, contentBot - CONTENT_PAD};
@@ -451,15 +792,21 @@ static void on_paint(HWND hwnd) {
         SelectObject(dc, of);
     }
 
-    /* Barra de botões */
-    int btnBarTop = WIN_H - STATUSBAR_H - BTNBAR_H;
-    RECT rcBtnBar = {0, btnBarTop, w, btnBarTop + BTNBAR_H};
-    FillRect(dc, &rcBtnBar, g_hbrSecondary);
+    /* Barra de botões (só Impressoras / Configurações) */
+    if (g_activeTab != 0) {
+        int btnBarTop = WIN_H - STATUSBAR_H - BTNBAR_H;
+        RECT rcBtnBar = {0, btnBarTop, w, btnBarTop + BTNBAR_H};
+        FillRect(dc, &rcBtnBar, g_hbrSecondary);
+        HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
+        RECT rcSep = {0, btnBarTop, w, btnBarTop + 1};
+        FillRect(dc, &rcSep, hbrd);
+        DeleteObject(hbrd);
+    }
 
-    HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
-    RECT rcSep = {0, btnBarTop, w, btnBarTop + 1};
-    FillRect(dc, &rcSep, hbrd);
-    DeleteObject(hbrd);
+    /* Borda da janela (1px) */
+    HBRUSH hbWnd = CreateSolidBrush(CLR_BORDER);
+    FrameRect(dc, &rc, hbWnd);
+    DeleteObject(hbWnd);
 
     EndPaint(hwnd, &ps);
 }
@@ -503,7 +850,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_MEASUREITEM: {
         MEASUREITEMSTRUCT *mis = (MEASUREITEMSTRUCT *)lp;
-        if (mis->CtlID == IDC_PRINTER_LIST || mis->CtlID == IDC_PROFILE_LIST) {
+        if (mis->CtlID == IDC_PRINTER_LIST) {
             listview_measure(mis);
             return TRUE;
         }
@@ -512,7 +859,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lp;
-        if (dis->CtlID == IDC_PRINTER_LIST || dis->CtlID == IDC_PROFILE_LIST) {
+        if (dis->CtlID == IDC_PRINTER_LIST) {
             listview_draw_item(dis);
             return TRUE;
         }
@@ -531,6 +878,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     case WM_COMMAND:
+        if (LOWORD(wp) == IDC_COMBO_PROFILE_SEL && HIWORD(wp) == CBN_SELCHANGE) {
+            InvalidateRect(hwnd, NULL, FALSE);
+            return 0;
+        }
         switch (LOWORD(wp)) {
         case IDC_BTN_ADD:           on_add(hwnd);       break;
         case IDC_BTN_REMOVE:        on_remove(hwnd);    break;
@@ -584,7 +935,7 @@ HWND mainwnd_create(HINSTANCE hInst) {
     DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY,
                           &policy, sizeof(policy));
 
-    MARGINS m = {0, 0, 0, 1};
+    MARGINS m = {1, 1, 1, 1};
     DwmExtendFrameIntoClientArea(hwnd, &m);
 
     return hwnd;

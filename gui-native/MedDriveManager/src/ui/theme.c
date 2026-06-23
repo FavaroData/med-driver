@@ -41,10 +41,10 @@ static HICON load_ico(HINSTANCE hInst, int id, int w, int h) {
 }
 
 void theme_init(HINSTANCE hInst) {
-    g_fontTitle    = make_font(18, FW_SEMIBOLD);
-    g_fontSubtitle = make_font(14, FW_NORMAL);
-    g_fontContent  = make_font(13, FW_NORMAL);
-    g_fontSmall    = make_font(11, FW_NORMAL);
+    g_fontTitle    = make_font(12, FW_SEMIBOLD);
+    g_fontSubtitle = make_font(10, FW_NORMAL);
+    g_fontContent  = make_font( 9, FW_NORMAL);
+    g_fontSmall    = make_font( 8, FW_NORMAL);
 
     g_hbrPrimary   = CreateSolidBrush(CLR_BG_PRIMARY);
     g_hbrSecondary = CreateSolidBrush(CLR_BG_SECONDARY);

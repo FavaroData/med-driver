@@ -6,18 +6,17 @@
 #include "resource.h"
 
 void titlebar_create_buttons(HWND hwndParent, HINSTANCE hInst) {
-    int btnY = (TITLEBAR_H - TITLEBTN_W) / 2;
     int btnX = WIN_W - TITLEBTN_W * 2;
 
     HWND hMin = CreateWindowW(L"BUTTON", L"",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        btnX, btnY, TITLEBTN_W, TITLEBTN_W,
+        btnX, 0, TITLEBTN_W, TITLEBTN_W,
         hwndParent, (HMENU)(UINT_PTR)IDC_BTN_TITLEMIN, hInst, NULL);
     buttons_install_hover(hMin);
 
     HWND hClose = CreateWindowW(L"BUTTON", L"",
         WS_CHILD | WS_VISIBLE | BS_OWNERDRAW,
-        btnX + TITLEBTN_W, btnY, TITLEBTN_W, TITLEBTN_W,
+        btnX + TITLEBTN_W, 0, TITLEBTN_W, TITLEBTN_W,
         hwndParent, (HMENU)(UINT_PTR)IDC_BTN_TITLECLOSE, hInst, NULL);
     buttons_install_hover(hClose);
 }
@@ -34,7 +33,7 @@ void titlebar_draw_button(DRAWITEMSTRUCT *dis) {
     if (isClose)
         bg = sel ? CLR_CLOSE_PRS : hot ? CLR_CLOSE_HOV : CLR_BG_PRIMARY;
     else
-        bg = sel ? CLR_CARD      : hot ? CLR_TITLEBTN_HOV : CLR_BG_PRIMARY;
+        bg = sel ? CLR_TITLEBTN_HOV : hot ? CLR_TITLEBTN_HOV : CLR_BG_PRIMARY;
 
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);
@@ -42,7 +41,8 @@ void titlebar_draw_button(DRAWITEMSTRUCT *dis) {
 
     /* × para fechar, − para minimizar */
     const wchar_t *sym = isClose ? L"\xD7" : L"\x2212";
-    SetTextColor(dc, CLR_TEXT_PRIMARY);
+    COLORREF symClr = (isClose && (hot || sel)) ? RGB(255,255,255) : CLR_TEXT_PRIMARY;
+    SetTextColor(dc, symClr);
     SetBkMode(dc, TRANSPARENT);
     HFONT of = (HFONT)SelectObject(dc, g_fontSubtitle);
     DrawTextW(dc, sym, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -51,9 +51,7 @@ void titlebar_draw_button(DRAWITEMSTRUCT *dis) {
 
 void titlebar_paint(HDC dc, int clientW) {
     RECT rcBar = {0, 0, clientW, TITLEBAR_H};
-    HBRUSH hbr = CreateSolidBrush(CLR_BG_PRIMARY);
-    FillRect(dc, &rcBar, hbr);
-    DeleteObject(hbr);
+    FillRect(dc, &rcBar, g_hbrPrimary);
 
     HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
     RECT rcLine = {0, TITLEBAR_H - 1, clientW, TITLEBAR_H};

@@ -141,15 +141,21 @@ static void draw_dlg_btn(DRAWITEMSTRUCT *dis, BOOL isPrimary) {
     BOOL sel = (dis->itemState & ODS_SELECTED) != 0;
 
     COLORREF bg = isPrimary
-        ? (sel ? CLR_ACCENT       : hot ? CLR_BTN_PRIMARY_HOV : CLR_BTN_PRIMARY)
-        : (sel ? CLR_CARD         : hot ? CLR_BTN_SEC_HOV     : CLR_BTN_SECONDARY);
+        ? (sel ? CLR_ACCENT_HOVER  : hot ? CLR_BTN_PRIMARY_HOV : CLR_BTN_PRIMARY)
+        : (sel ? CLR_BTN_SEC_HOV   : hot ? CLR_BTN_SEC_HOV     : CLR_BTN_SECONDARY);
 
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);
     DeleteObject(hbr);
 
+    if (!isPrimary) {
+        HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
+        FrameRect(dc, &rc, hbrd);
+        DeleteObject(hbrd);
+    }
+
     wchar_t txt[64]; GetWindowTextW(dis->hwndItem, txt, 64);
-    SetTextColor(dc, CLR_TEXT_PRIMARY);
+    SetTextColor(dc, isPrimary ? RGB(255,255,255) : CLR_TEXT_PRIMARY);
     SetBkMode(dc, TRANSPARENT);
     HFONT of = (HFONT)SelectObject(dc, g_fontContent);
     DrawTextW(dc, txt, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
