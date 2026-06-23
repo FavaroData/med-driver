@@ -6,9 +6,10 @@
 #include "ui/theme.h"
 #include "ui/buttons.h"
 
-static PrinterEntry       *s_entry;
-static const ProfileEntry *s_profiles;
-static int                 s_profileCount;
+static PrinterEntry        *s_entry;
+static const ProfileEntry  *s_profiles;
+static int                  s_profileCount;
+static const PrinterEntry  *s_prefill;   /* NULL = modo adicionar */
 
 static void update_preview(HWND hwnd, int sel) {
     if (sel < 0 || sel >= s_profileCount) {
@@ -69,8 +70,20 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         HWND hCombo = GetDlgItem(hwnd, IDC_COMBO_PROFILE);
         for (int i = 0; i < s_profileCount; i++)
             SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)s_profiles[i].name);
-        SendMessageW(hCombo, CB_SETCURSEL, 0, 0);
-        update_preview(hwnd, 0);
+
+        int initSel = 0;
+        if (s_prefill) {
+            SetWindowTextW(hwnd, L"Editar Impressora");
+            SetDlgItemTextW(hwnd, IDC_EDIT_NAME, s_prefill->name);
+            SetDlgItemTextW(hwnd, IDOK, L"Salvar");
+            for (int i = 0; i < s_profileCount; i++) {
+                if (wcscmp(s_profiles[i].name, s_prefill->profileName) == 0) {
+                    initSel = i; break;
+                }
+            }
+        }
+        SendMessageW(hCombo, CB_SETCURSEL, initSel, 0);
+        update_preview(hwnd, initSel);
 
         make_btn_ownerdraw(hwnd, IDOK);
         make_btn_ownerdraw(hwnd, IDCANCEL);
@@ -91,10 +104,12 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetBkColor((HDC)wp,   CLR_CARD);
         return (INT_PTR)g_hbrCard;
 
-    case WM_CTLCOLORSTATIC:
-        SetTextColor((HDC)wp, CLR_TEXT_SECONDARY);
+    case WM_CTLCOLORSTATIC: {
+        BOOL isSection = (GetWindowLongPtrW((HWND)lp, GWLP_ID) == IDC_SECTION_LBL);
+        SetTextColor((HDC)wp, isSection ? CLR_ACCENT : CLR_TEXT_SECONDARY);
         SetBkMode((HDC)wp, TRANSPARENT);
         return (INT_PTR)g_hbrPrimary;
+    }
 
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT *di = (DRAWITEMSTRUCT *)lp;
@@ -138,10 +153,12 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 BOOL dlg_add_show(HWND parent, PrinterEntry *out,
-                  const ProfileEntry *profiles, int profileCount) {
+                  const ProfileEntry *profiles, int profileCount,
+                  const PrinterEntry *prefill) {
     s_entry        = out;
     s_profiles     = profiles;
     s_profileCount = profileCount;
+    s_prefill      = prefill;
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
     INT_PTR result  = DialogBoxW(hInst, MAKEINTRESOURCEW(IDD_ADD_PRINTER), parent, DlgProc);
     return result == IDOK;

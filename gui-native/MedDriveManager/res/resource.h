@@ -6,7 +6,8 @@
 #define IDC_BTN_ADD         102
 #define IDC_BTN_REMOVE      103
 #define IDC_STATUS_BAR      104
-#define IDC_BTN_REFRESH     105
+#define IDC_BTN_REFRESH         105
+#define IDC_BTN_EDIT_PRINTER    106
 
 #define IDD_ADD_PRINTER          200
 #define IDC_EDIT_NAME            201
@@ -44,6 +45,9 @@
 #define IDC_BTN_DUP_PROFILE      113
 #define IDC_BTN_DEL_PROFILE      114
 #define IDC_COMBO_PROFILE_SEL    115
+
+/* ── Estilo compartilhado: rótulo de seção (azul accent) ─────────── */
+#define IDC_SECTION_LBL            120
 
 /* ── Dialog Novo Perfil ──────────────────────────────────────────── */
 #define IDD_ADD_PROFILE            300

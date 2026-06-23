@@ -31,3 +31,9 @@ BOOL dlg_progress_edit_profile(HWND parent,
 
 /* Lanca remove-profile.ps1. */
 BOOL dlg_progress_remove_profile(HWND parent, const wchar_t *profileName);
+
+/* Lanca edit-printer.ps1 (Rename-Printer + Set-Printer -PortName). */
+BOOL dlg_progress_edit_printer(HWND parent,
+                                const wchar_t *oldPrinterName,
+                                const wchar_t *newPrinterName,
+                                const wchar_t *profileName);

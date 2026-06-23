@@ -2,8 +2,8 @@
 #include <windows.h>
 #include "store.h"
 
-/* Exibe o dialog modal "Adicionar Impressora".
-   profiles/profileCount = perfis disponíveis (carregados em mainwnd).
-   Retorna TRUE e preenche *out se o usuário clicar OK. */
+/* Exibe o dialog "Adicionar / Editar Impressora".
+   Se prefill != NULL, entra em modo edição: nome desabilitado, perfil pré-selecionado. */
 BOOL dlg_add_show(HWND parent, PrinterEntry *out,
-                  const ProfileEntry *profiles, int profileCount);
+                  const ProfileEntry *profiles, int profileCount,
+                  const PrinterEntry *prefill);

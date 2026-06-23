@@ -20,7 +20,7 @@
 #define MAX_PRINTERS 512
 
 /* ── Subtítulo (seção) ───────────────────────────────────────────────── */
-#define SUBTITLE_H  24
+#define SUBTITLE_H  20
 
 /* ── Layout inline da aba Perfis ────────────────────────────────────── */
 #define PROF_SUBLABEL_Y  (TITLEBAR_H + NAVBAR_H + SUBTITLE_H + 4)  /* "Perfil selecionado:" */
@@ -36,6 +36,7 @@ static int  g_activeTab = 0; /* 0=Perfis  1=Impressoras  2=Configurações */
 static HWND g_hwndList;
 static HWND g_hwndBtnAdd;
 static HWND g_hwndBtnRemove;
+static HWND g_hwndBtnEditPrinter;
 static HWND g_hwndBtnRefresh;
 static PrinterEntry g_printers[MAX_PRINTERS];
 static int  g_count = 0;
@@ -133,7 +134,7 @@ static void on_add(HWND hwnd) {
     }
 
     PrinterEntry entry = {0};
-    if (!dlg_add_show(hwnd, &entry, g_profiles, g_profileCount)) return;
+    if (!dlg_add_show(hwnd, &entry, g_profiles, g_profileCount, NULL)) return;
     if (!dlg_progress_run(hwnd, entry.name, entry.profileName)) return;
     sync_with_system();
 }
@@ -155,6 +156,27 @@ static void on_remove(HWND hwnd) {
     wchar_t name[PRINTER_NAME_MAX];
     wcsncpy_s(name, PRINTER_NAME_MAX, g_printers[sel].name, _TRUNCATE);
     if (!dlg_progress_remove(hwnd, name)) return;
+    sync_with_system();
+}
+
+static void on_edit_printer(HWND hwnd) {
+    int sel = ListView_GetNextItem(g_hwndList, -1, LVNI_SELECTED);
+    if (sel < 0 || sel >= g_count) return;
+
+    if (g_profileCount == 0) {
+        MessageBoxW(hwnd,
+            L"Nenhum perfil cadastrado.\r\n"
+            L"Crie um perfil na aba PERFIS antes de editar.",
+            L"Sem perfis disponíveis", MB_ICONWARNING | MB_OK);
+        return;
+    }
+
+    wchar_t oldName[PRINTER_NAME_MAX];
+    wcsncpy_s(oldName, PRINTER_NAME_MAX, g_printers[sel].name, _TRUNCATE);
+
+    PrinterEntry entry = {0};
+    if (!dlg_add_show(hwnd, &entry, g_profiles, g_profileCount, &g_printers[sel])) return;
+    if (!dlg_progress_edit_printer(hwnd, oldName, entry.name, entry.profileName)) return;
     sync_with_system();
 }
 
@@ -206,9 +228,10 @@ static void switch_tab(int tab) {
     ShowWindow(g_hwndBtnDelProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
 
     ShowWindow(g_hwndList,           isImpressoras ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnAdd,         isImpressoras ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnRemove,      isImpressoras ? SW_SHOW : SW_HIDE);
-    ShowWindow(g_hwndBtnRefresh,     isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnAdd,          isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnRemove,       isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnEditPrinter,  isImpressoras ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_hwndBtnRefresh,      isImpressoras ? SW_SHOW : SW_HIDE);
 
     /* Statusbar: conteúdo depende da aba */
     if (g_hwndStatus) {
@@ -425,23 +448,85 @@ static void make_preview(const ProfileEntry *p, wchar_t *out, int cch) {
 }
 
 /* Desenha uma linha label + valor. Retorna o próximo Y. */
-static int draw_prop(HDC dc, int x, int y, int w,
-                     const wchar_t *key, const wchar_t *val, COLORREF valClr) {
-    SetBkMode(dc, TRANSPARENT);
-    int half = w * 45 / 100;
+/* isPill=TRUE: valor em badge preenchido (cor=valClr); FALSE: texto simples */
+static int draw_prop_row(HDC dc, int x, int y, int w,
+                         HICON ico,
+                         const wchar_t *label, const wchar_t *val,
+                         COLORREF valClr, BOOL isPill) {
+    int rowH  = 34;
+    int midY  = y + rowH / 2;
+    int icoSz = 16;
 
+    if (ico)
+        DrawIconEx(dc, x, midY - icoSz / 2, ico, icoSz, icoSz, 0, NULL, DI_NORMAL);
+
+    int textX = x + icoSz + 6;
+    int valW  = 100;
+    int valX  = x + w - valW;
+
+    SetBkMode(dc, TRANSPARENT);
+    HFONT of = (HFONT)SelectObject(dc, g_fontContent);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    RECT rlbl = {textX, y, valX - 4, y + rowH};
+    DrawTextW(dc, label, -1, &rlbl,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    if (isPill) {
+        SIZE tsz = {0};
+        GetTextExtentPoint32W(dc, val, (int)wcslen(val), &tsz);
+        int pw = tsz.cx + 16, ph = 20;
+        int px = x + w - pw, py = midY - ph / 2;
+        RECT rpill = {px, py, px + pw, py + ph};
+        HBRUSH hbp = CreateSolidBrush(valClr);
+        FillRect(dc, &rpill, hbp); DeleteObject(hbp);
+        SelectObject(dc, g_fontSmall);
+        SetTextColor(dc, RGB(255, 255, 255));
+        DrawTextW(dc, val, -1, &rpill, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    } else {
+        SetTextColor(dc, valClr);
+        RECT rval = {valX, y, x + w, y + rowH};
+        DrawTextW(dc, val, -1, &rval,
+                  DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    }
+
+    SelectObject(dc, of);
+
+    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN op = (HPEN)SelectObject(dc, hp);
+    MoveToEx(dc, x, y + rowH, NULL);
+    LineTo(dc, x + w, y + rowH);
+    SelectObject(dc, op); DeleteObject(hp);
+
+    return y + rowH + 1;
+}
+
+/* Linha de caminho/texto longo: label (cima, cinza) + valor (baixo, colorido) */
+static int draw_prop_path_row(HDC dc, int x, int y, int w,
+                               HICON ico, const wchar_t *label, const wchar_t *val,
+                               COLORREF valClr) {
+    int lnH = 17, icoSz = 16, rowH = lnH * 2 + 4;
+    int indent = icoSz + 6;
+
+    if (ico)
+        DrawIconEx(dc, x, y + 3, ico, icoSz, icoSz, 0, NULL, DI_NORMAL);
+
+    SetBkMode(dc, TRANSPARENT);
     HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
     SetTextColor(dc, CLR_TEXT_SECONDARY);
-    RECT rk = {x, y, x + half, y + 18};
-    DrawTextW(dc, key, -1, &rk, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    RECT rlbl = {x + indent, y, x + w, y + lnH};
+    DrawTextW(dc, label, -1, &rlbl, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     SelectObject(dc, g_fontContent);
     SetTextColor(dc, valClr);
-    RECT rv = {x + half, y, x + w, y + 18};
-    DrawTextW(dc, val, -1, &rv, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-
+    RECT rval = {x + indent, y + lnH + 2, x + w, y + rowH};
+    DrawTextW(dc, val, -1, &rval, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_PATH_ELLIPSIS);
     SelectObject(dc, of);
-    return y + 20;
+
+    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN op = (HPEN)SelectObject(dc, hp);
+    MoveToEx(dc, x, y + rowH, NULL); LineTo(dc, x + w, y + rowH);
+    SelectObject(dc, op); DeleteObject(hp);
+    return y + rowH + 1;
 }
 
 static void draw_col_title(HDC dc, int x, int y, int w, const wchar_t *title, int *cy_out) {
@@ -462,6 +547,7 @@ static void draw_col_title(HDC dc, int x, int y, int w, const wchar_t *title, in
 
 /* Coluna 1 — Detalhes do perfil */
 static void paint_col1(HDC dc, int x, int y, int w, int panH) {
+    (void)panH;
     int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= g_profileCount) return;
     ProfileEntry *p = &g_profiles[sel];
@@ -471,96 +557,36 @@ static void paint_col1(HDC dc, int x, int y, int w, int panH) {
     int cy;
     draw_col_title(dc, cx, y + 8, cw, L"DETALHES DO PERFIL", &cy);
 
-    cy = draw_prop(dc, cx, cy, cw,
-                   L"Estratégia:",
-                   p->overwriteFile ? L"Sobrescrever" : L"Incrementar",
-                   CLR_TEXT_PRIMARY);
-    cy = draw_prop(dc, cx, cy, cw,
-                   L"Abrir após gerar:",
-                   p->openAfterGenerate ? L"Sim" : L"Não",
-                   p->openAfterGenerate ? CLR_GREEN : CLR_RED);
-    cy = draw_prop(dc, cx, cy, cw,
-                   L"Sobrescrever arquivo:",
-                   p->overwriteFile ? L"Sim" : L"Não",
-                   p->overwriteFile ? CLR_GREEN : CLR_RED);
+    cy = draw_prop_row(dc, cx, cy, cw, g_icoSync20,
+        L"Estratégia",
+        p->overwriteFile ? L"Sobrescrever" : L"Incrementar",
+        p->overwriteFile ? CLR_RED : CLR_GREEN, TRUE);
 
-    cy += 4;
-    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
-    HPEN op = (HPEN)SelectObject(dc, hp);
-    MoveToEx(dc, cx, cy, NULL); LineTo(dc, cx + cw, cy);
-    SelectObject(dc, op); DeleteObject(hp);
+    cy = draw_prop_row(dc, cx, cy, cw, g_icoSettings20,
+        L"Salvar automaticamente", L"Sim", CLR_GREEN, FALSE);
+
+    cy = draw_prop_row(dc, cx, cy, cw, g_icoDocument16,
+        L"Abrir após gerar",
+        p->openAfterGenerate ? L"Sim" : L"Não",
+        p->openAfterGenerate ? CLR_GREEN : CLR_RED, FALSE);
+
+    cy = draw_prop_row(dc, cx, cy, cw, g_icoDelete20,
+        L"Sobrescrever arquivo",
+        p->overwriteFile ? L"Sim" : L"Não",
+        p->overwriteFile ? CLR_GREEN : CLR_RED, FALSE);
+
     cy += 8;
 
-    SetBkMode(dc, TRANSPARENT);
-    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
-    SetTextColor(dc, CLR_TEXT_SECONDARY);
-    RECT rl1 = {cx, cy, cx + cw, cy + 14};
-    DrawTextW(dc, L"Pasta de destino:", -1, &rl1, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    cy += 14;
-    SelectObject(dc, g_fontContent);
-    SetTextColor(dc, CLR_TEXT_PRIMARY);
-    RECT rp = {cx, cy, cx + cw, cy + 28};
-    DrawTextW(dc, p->outputPath, -1, &rp,
-              DT_LEFT | DT_TOP | DT_WORDBREAK | DT_PATH_ELLIPSIS);
-    cy += 32;
+    cy = draw_prop_path_row(dc, cx, cy, cw, g_icoFolder16,
+        L"Pasta de destino", p->outputPath, CLR_ACCENT);
 
-    SelectObject(dc, g_fontSmall);
-    SetTextColor(dc, CLR_TEXT_SECONDARY);
-    RECT rl2 = {cx, cy, cx + cw, cy + 14};
-    DrawTextW(dc, L"Padrão do nome:", -1, &rl2, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    cy += 14;
-    SelectObject(dc, g_fontContent);
-    SetTextColor(dc, CLR_ACCENT);
-    RECT rbn = {cx, cy, cx + cw, cy + 18};
-    DrawTextW(dc, p->outputBaseName, -1, &rbn,
-              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-
-    SelectObject(dc, of);
+    draw_prop_path_row(dc, cx, cy, cw, g_icoDocument16,
+        L"Padrão do nome do arquivo", p->outputBaseName, CLR_ACCENT);
 }
 
-/* Coluna 2 — Preview do arquivo */
-static void paint_col2(HDC dc, int x, int y, int w, int panH) {
-    int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
-    if (sel < 0 || sel >= g_profileCount) return;
-    ProfileEntry *p = &g_profiles[sel];
-
-    int pad = 12;
-    int cx = x + pad, cw = w - pad * 2;
-    int cy;
-    draw_col_title(dc, cx, y + 8, cw, L"PREVIEW DO ARQUIVO", &cy);
-
-    SYSTEMTIME st; GetLocalTime(&st);
-    wchar_t caption[64];
-    _snwprintf_s(caption, 64, _TRUNCATE, L"Exemplo (hoje às %02d:%02d)",
-                 st.wHour, st.wMinute);
-    SetBkMode(dc, TRANSPARENT);
-    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
-    SetTextColor(dc, CLR_TEXT_SECONDARY);
-    RECT rcap = {cx, cy, cx + cw, cy + 14};
-    DrawTextW(dc, caption, -1, &rcap, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(dc, of);
-
-    /* Área central: ícone + nome gerado */
-    int midX = x + w / 2;
-    int midY = y + panH / 2;
-
-    if (g_icoDocument16)
-        DrawIconEx(dc, midX - 16, midY - 32, g_icoDocument16, 32, 32, 0, NULL, DI_NORMAL);
-
-    wchar_t preview[MAX_PATH];
-    make_preview(p, preview, MAX_PATH);
-
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, CLR_GREEN);
-    of = (HFONT)SelectObject(dc, g_fontContent);
-    RECT rfn = {cx, midY + 6, cx + cw, midY + 24};
-    DrawTextW(dc, preview, -1, &rfn,
-              DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-    SelectObject(dc, of);
-}
-
-/* Coluna 3 — Variáveis utilizadas */
-static void paint_col3(HDC dc, int x, int y, int w, int panH) {
+/* Coluna 2 — Variáveis utilizadas + preview do nome gerado */
+static void paint_col_vars(HDC dc, int x, int y, int w, int panH) {
+    (void)panH;
     int sel = (int)SendMessageW(g_hwndCombo, CB_GETCURSEL, 0, 0);
     if (sel < 0 || sel >= g_profileCount) return;
     ProfileEntry *p = &g_profiles[sel];
@@ -570,55 +596,62 @@ static void paint_col3(HDC dc, int x, int y, int w, int panH) {
     int cy;
     draw_col_title(dc, cx, y + 8, cw, L"VARIÁVEIS UTILIZADAS", &cy);
 
-    int infoBoxH = 38;
-    int infoBoxY = y + panH - infoBoxH - pad;
-
-    for (int i = 0; i < KNOWN_TOKEN_COUNT && cy < infoBoxY - 4; i++) {
+    /* Badges das variáveis usadas no padrão */
+    for (int i = 0; i < KNOWN_TOKEN_COUNT; i++) {
         if (wcsstr(p->outputBaseName, s_tokens[i].tok) == NULL) continue;
 
         RECT badge = {cx, cy, cx + cw, cy + 36};
         HBRUSH hbBadge = CreateSolidBrush(CLR_ACCENT_LIGHT);
-        FillRect(dc, &badge, hbBadge);
-        DeleteObject(hbBadge);
+        FillRect(dc, &badge, hbBadge); DeleteObject(hbBadge);
         HBRUSH hbBord = CreateSolidBrush(CLR_BORDER);
-        FrameRect(dc, &badge, hbBord);
-        DeleteObject(hbBord);
+        FrameRect(dc, &badge, hbBord); DeleteObject(hbBord);
 
         SetBkMode(dc, TRANSPARENT);
         HFONT of = (HFONT)SelectObject(dc, g_fontContent);
         SetTextColor(dc, CLR_ACCENT);
         RECT rtok = {cx + 8, cy + 2, cx + cw - 4, cy + 18};
         DrawTextW(dc, s_tokens[i].tok, -1, &rtok, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
         SelectObject(dc, g_fontSmall);
         SetTextColor(dc, CLR_TEXT_SECONDARY);
         RECT rdesc = {cx + 8, cy + 18, cx + cw - 4, cy + 34};
         DrawTextW(dc, s_tokens[i].desc, -1, &rdesc, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-
         SelectObject(dc, of);
         cy += 40;
     }
 
-    /* Caixa informativa azul clara */
-    RECT infoBox = {cx, infoBoxY, cx + cw, infoBoxY + infoBoxH};
-    HBRUSH hbInfo = CreateSolidBrush(CLR_ACCENT_LIGHT);
-    FillRect(dc, &infoBox, hbInfo);
-    DeleteObject(hbInfo);
-    RECT leftBar = {cx, infoBoxY, cx + 3, infoBoxY + infoBoxH};
-    HBRUSH hbAccent = CreateSolidBrush(CLR_ACCENT);
-    FillRect(dc, &leftBar, hbAccent);
-    DeleteObject(hbAccent);
+    /* Separador */
+    cy += 6;
+    HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN op = (HPEN)SelectObject(dc, hp);
+    MoveToEx(dc, cx, cy, NULL); LineTo(dc, cx + cw, cy);
+    SelectObject(dc, op); DeleteObject(hp);
+    cy += 8;
+
+    /* Exemplo do nome gerado */
+    SYSTEMTIME st; GetLocalTime(&st);
+    wchar_t caption[64];
+    _snwprintf_s(caption, 64, _TRUNCATE, L"Exemplo do nome gerado (hoje às %02d:%02d):",
+                 st.wHour, st.wMinute);
 
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, CLR_TEXT_SECONDARY);
     HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
-    RECT rinfo = {cx + 8, infoBoxY + 2, cx + cw - 4, infoBoxY + infoBoxH};
-    DrawTextW(dc, L"Passe o mouse sobre uma variável para ver a descrição.", -1,
-              &rinfo, DT_LEFT | DT_TOP | DT_WORDBREAK);
+    SetTextColor(dc, CLR_TEXT_SECONDARY);
+    RECT rcap = {cx, cy, cx + cw, cy + 14};
+    DrawTextW(dc, caption, -1, &rcap, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    cy += 18;
+
+    wchar_t preview[MAX_PATH];
+    make_preview(p, preview, MAX_PATH);
+
+    SelectObject(dc, g_fontContent);
+    SetTextColor(dc, CLR_GREEN);
+    RECT rfn = {cx, cy, cx + cw, cy + 20};
+    DrawTextW(dc, preview, -1, &rfn,
+              DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
     SelectObject(dc, of);
 }
 
-/* Painel completo de 3 colunas */
+/* Painel de 2 colunas: detalhes | variáveis + preview */
 static void paint_profile_panel(HDC dc, int clientW) {
     int panX = CONTENT_PAD;
     int panY = PROF_PANEL_Y;
@@ -626,10 +659,9 @@ static void paint_profile_panel(HDC dc, int clientW) {
     int panH = WIN_H - STATUSBAR_H - 6 - panY;
 
     int colGap = 8;
-    int colW   = (panW - colGap * 2) / 3;
-    int col3W  = panW - colW * 2 - colGap * 2;
-    int col2X  = panX + colW + colGap;
-    int col3X  = col2X + colW + colGap;
+    int col1W  = panW * 50 / 100;
+    int col2W  = panW - col1W - colGap;
+    int col2X  = panX + col1W + colGap;
 
     /* Fundo e borda do card */
     RECT rcPanel = {panX, panY, panX + panW, panY + panH};
@@ -638,16 +670,14 @@ static void paint_profile_panel(HDC dc, int clientW) {
     FrameRect(dc, &rcPanel, hbrd);
     DeleteObject(hbrd);
 
-    /* Separadores verticais */
+    /* Separador vertical */
     HPEN hp = CreatePen(PS_SOLID, 1, CLR_BORDER);
     HPEN op = (HPEN)SelectObject(dc, hp);
     MoveToEx(dc, col2X - 1, panY + 8, NULL); LineTo(dc, col2X - 1, panY + panH - 8);
-    MoveToEx(dc, col3X - 1, panY + 8, NULL); LineTo(dc, col3X - 1, panY + panH - 8);
     SelectObject(dc, op); DeleteObject(hp);
 
-    paint_col1(dc, panX,  panY, colW,  panH);
-    paint_col2(dc, col2X, panY, colW,  panH);
-    paint_col3(dc, col3X, panY, col3W, panH);
+    paint_col1(dc,    panX, panY, col1W, panH);
+    paint_col_vars(dc, col2X, panY, col2W, panH);
 }
 
 /* ── WM_CREATE ───────────────────────────────────────────────────────── */
@@ -703,9 +733,12 @@ static void on_create(HWND hwnd) {
     g_hwndBtnRemove = buttons_create(hwnd, hInst, IDC_BTN_REMOVE,
                                       L"Remover", BTN_STYLE_SECONDARY,
                                       CONTENT_PAD + BTN_W + 8, printerBtnY, BTN_W, BTN_H);
+    g_hwndBtnEditPrinter = buttons_create(hwnd, hInst, IDC_BTN_EDIT_PRINTER,
+                                           L"Editar", BTN_STYLE_SECONDARY,
+                                           CONTENT_PAD + (BTN_W + 8) * 2, printerBtnY, BTN_W, BTN_H);
     g_hwndBtnRefresh = buttons_create(hwnd, hInst, IDC_BTN_REFRESH,
                                        L"Atualizar", BTN_STYLE_SECONDARY,
-                                       CONTENT_PAD + (BTN_W + 8) * 2, printerBtnY, BTN_W, BTN_H);
+                                       CONTENT_PAD + (BTN_W + 8) * 3, printerBtnY, BTN_W, BTN_H);
 
     /* Status bar */
     g_hwndStatus = statusbar_create(hwnd, hInst);
@@ -869,7 +902,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (dis->CtlID == IDC_BTN_ADD || dis->CtlID == IDC_BTN_NEW_PROFILE)
             return buttons_draw(dis, BTN_STYLE_PRIMARY);
-        if (dis->CtlID == IDC_BTN_REMOVE  || dis->CtlID == IDC_BTN_REFRESH  ||
+        if (dis->CtlID == IDC_BTN_REMOVE       || dis->CtlID == IDC_BTN_REFRESH      ||
+            dis->CtlID == IDC_BTN_EDIT_PRINTER ||
             dis->CtlID == IDC_BTN_EDIT_PROFILE ||
             dis->CtlID == IDC_BTN_DUP_PROFILE  ||
             dis->CtlID == IDC_BTN_DEL_PROFILE)
@@ -883,9 +917,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
         switch (LOWORD(wp)) {
-        case IDC_BTN_ADD:           on_add(hwnd);       break;
-        case IDC_BTN_REMOVE:        on_remove(hwnd);    break;
-        case IDC_BTN_REFRESH:       sync_with_system(); break;
+        case IDC_BTN_ADD:              on_add(hwnd);             break;
+        case IDC_BTN_REMOVE:           on_remove(hwnd);          break;
+        case IDC_BTN_EDIT_PRINTER:     on_edit_printer(hwnd);    break;
+        case IDC_BTN_REFRESH:          sync_with_system();       break;
         case IDC_BTN_TITLEMIN:      ShowWindow(hwnd, SW_MINIMIZE); break;
         case IDC_BTN_TITLECLOSE:    DestroyWindow(hwnd); break;
         case IDC_BTN_NEW_PROFILE:   on_new_profile(hwnd);          break;

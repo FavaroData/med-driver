@@ -17,86 +17,78 @@ IDI_ICO_PLUG16     ICON  "icons/plug_16.ico"
 IDI_ICO_APP        ICON  "icons/printer_48.ico"
 
 
-IDD_ADD_PRINTER DIALOGEX 0, 0, 320, 210
+IDD_ADD_PRINTER DIALOGEX 0, 0, 320, 212
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Adicionar Impressora"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* ── Seção: Perfil ── */
-    LTEXT           "PERFIL",               IDC_STATIC,            12,  10, 296,  9
+    LTEXT           "PERFIL",               IDC_SECTION_LBL,       12,  10, 296,  9
     LTEXT           "Selecione um perfil:", IDC_STATIC,            12,  24, 296,  9
     COMBOBOX        IDC_COMBO_PROFILE,                             12,  34, 296, 120, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ,       12,  53, 296,  1
-
     /* ── Seção: Detalhes do perfil ── */
-    LTEXT           "DETALHES DO PERFIL",   IDC_STATIC,            12,  60, 296,  9
+    LTEXT           "DETALHES DO PERFIL",   IDC_SECTION_LBL,       12,  58, 296,  9
 
-    LTEXT           "Pasta de destino:",    IDC_STATIC,            12,  73,  90,  9
-    LTEXT           "",                     IDC_LBL_PRV_PATH,     108,  73, 200,  9
+    LTEXT           "Pasta de destino:",    IDC_STATIC,            12,  71,  90,  9
+    LTEXT           "",                     IDC_LBL_PRV_PATH,     108,  71, 200,  9
 
-    LTEXT           "Padrão do arquivo:",   IDC_STATIC,            12,  86,  90,  9
-    LTEXT           "",                     IDC_LBL_PRV_BASENAME, 108,  86, 200,  9
+    LTEXT           "Padrão do arquivo:",   IDC_STATIC,            12,  84,  90,  9
+    LTEXT           "",                     IDC_LBL_PRV_BASENAME, 108,  84, 200,  9
 
-    LTEXT           "Estratégia:",          IDC_STATIC,            12,  99,  90,  9
-    LTEXT           "",                     IDC_LBL_PRV_STRATEGY, 108,  99, 200,  9
+    LTEXT           "Estratégia:",          IDC_STATIC,            12,  97,  90,  9
+    LTEXT           "",                     IDC_LBL_PRV_STRATEGY, 108,  97, 200,  9
 
-    LTEXT           "Abrir após gerar:",    IDC_STATIC,            12, 112,  90,  9
-    LTEXT           "",               IDC_LBL_PRV_OPEN_AFTER,     108, 112, 200,  9
-
-    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ,       12, 127, 296,  1
+    LTEXT           "Abrir após gerar:",    IDC_STATIC,            12, 110,  90,  9
+    LTEXT           "",               IDC_LBL_PRV_OPEN_AFTER,     108, 110, 200,  9
 
     /* ── Seção: Nome da impressora ── */
-    LTEXT           "NOME DA IMPRESSORA",   IDC_STATIC,            12, 134, 296,  9
-    EDITTEXT        IDC_EDIT_NAME,                                  12, 147, 296,  14, ES_AUTOHSCROLL
+    LTEXT           "NOME DA IMPRESSORA",   IDC_SECTION_LBL,       12, 126, 296,  9
+    EDITTEXT        IDC_EDIT_NAME,                                  12, 139, 296,  14, ES_AUTOHSCROLL
 
     /* ── Rodapé ── */
-    PUSHBUTTON      "Cancelar",             IDCANCEL,             198, 190,  56,  14
-    DEFPUSHBUTTON   "Adicionar",            IDOK,                 258, 190,  56,  14
+    PUSHBUTTON      "Cancelar",             IDCANCEL,             168, 190,  68,  16
+    DEFPUSHBUTTON   "Adicionar",            IDOK,                 240, 190,  68,  16
 END
 
-IDD_ADD_PROFILE DIALOGEX 0, 0, 320, 215
+IDD_ADD_PROFILE DIALOGEX 0, 0, 320, 217
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Novo Perfil"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     /* ── Seção: Identificação ── */
-    LTEXT           "IDENTIFICAÇÃO",        IDC_STATIC,              12,  10, 296,  9
+    LTEXT           "IDENTIFICAÇÃO",        IDC_SECTION_LBL,         12,  10, 296,  9
     LTEXT           "Nome do perfil:",      IDC_STATIC,              12,  24, 296,  9
     EDITTEXT        IDC_EDIT_PROFILE_NAME,                           12,  34, 296,  14, ES_AUTOHSCROLL
 
-    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ,         12,  56, 296,  1
-
     /* ── Seção: Saída ── */
-    LTEXT           "SAÍDA",               IDC_STATIC,              12,  63, 296,  9
-    LTEXT           "Padrão do arquivo:",  IDC_STATIC,              12,  77, 296,  9
-    EDITTEXT        IDC_EDIT_PROFILE_BASENAME,                       12,  87, 240,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "Inserir", IDC_BTN_PROFILE_TOKEN,               254,  87,  54,  14
+    LTEXT           "SAÍDA",               IDC_SECTION_LBL,         12,  56, 296,  9
+    LTEXT           "Padrão do arquivo:",  IDC_STATIC,              12,  70, 296,  9
+    EDITTEXT        IDC_EDIT_PROFILE_BASENAME,                       12,  80, 240,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Inserir variável",    IDC_BTN_PROFILE_TOKEN,   254,  80,  54,  14
 
-    LTEXT           "", IDC_LBL_PROFILE_PREVIEW,                     12, 105, 296,   9
+    LTEXT           "", IDC_LBL_PROFILE_PREVIEW,                     12,  98, 296,   9
 
-    LTEXT           "Pasta de destino:",   IDC_STATIC,              12, 118, 296,  9
-    EDITTEXT        IDC_EDIT_PROFILE_PATH,                           12, 128, 262,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "...", IDC_BTN_PROFILE_BROWSE,                  278, 128,  30,  14
-
-    CONTROL         "", IDC_STATIC, "STATIC", SS_ETCHEDHORZ,         12, 148, 296,  1
+    LTEXT           "Pasta de destino:",   IDC_STATIC,              12, 111, 296,  9
+    EDITTEXT        IDC_EDIT_PROFILE_PATH,                           12, 121, 262,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...", IDC_BTN_PROFILE_BROWSE,                  278, 121,  30,  14
 
     /* ── Seção: Opções ── */
-    LTEXT           "OPÇÕES",              IDC_STATIC,              12, 155, 296,  9
-    AUTOCHECKBOX    "Abrir PDF após gerar",               IDC_CHK_OPEN_AFTER, 12, 168, 148, 10
-    AUTOCHECKBOX    "Sobrescrever arquivo existente",     IDC_CHK_OVERWRITE,  12, 181, 160, 10
+    LTEXT           "OPÇÕES",              IDC_SECTION_LBL,         12, 143, 296,  9
+    AUTOCHECKBOX    "Abrir PDF após gerar",               IDC_CHK_OPEN_AFTER, 12, 156, 148, 10
+    AUTOCHECKBOX    "Sobrescrever arquivo existente",     IDC_CHK_OVERWRITE,  12, 169, 160, 10
 
     /* ── Rodapé ── */
-    PUSHBUTTON      "Cancelar",            IDCANCEL,               198, 198,  56,  14
-    DEFPUSHBUTTON   "Salvar",              IDOK,                   258, 198,  56,  14
+    PUSHBUTTON      "Cancelar",            IDCANCEL,               168, 197,  68,  16
+    DEFPUSHBUTTON   "Salvar",              IDOK,                   240, 197,  68,  16
 END
 
-IDD_PROGRESS DIALOGEX 0, 0, 420, 230
+IDD_PROGRESS DIALOGEX 0, 0, 420, 232
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Adicionando Impressora..."
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
-    EDITTEXT        IDC_EDIT_OUTPUT,             7,   7, 406, 206,
+    EDITTEXT        IDC_EDIT_OUTPUT,             7,   7, 406, 204,
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | NOT WS_TABSTOP
-    PUSHBUTTON      "Fechar", IDC_BTN_CLOSE_PROGRESS, 363, 217,  50,  12
+    PUSHBUTTON      "Fechar", IDC_BTN_CLOSE_PROGRESS, 351, 216,  62,  14
 END
