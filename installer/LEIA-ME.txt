@@ -7,7 +7,7 @@ Execute o instalador como Administrador:
   - Windows 10/11: MeddrivePrinter-Setup.exe
   - Windows 7:     MeddrivePrinter-Win7-Setup.exe
 
-Após a instalação, abra o MedDriveManager pelo menu Iniciar para
+Após a instalação, abra o MedDrivePrinterManager pela pasta ProgramData para
 criar perfis de saída e adicionar impressoras virtuais.
 
 
@@ -26,9 +26,6 @@ Para confirmar que o driver foi instalado corretamente, execute no PowerShell:
 
   Get-Printer | Where-Object { $_.PortName -like "Meddrive*" } |
       Select-Object Name, DriverName, PortName
-
-Ou use o script de diagnóstico completo (raiz do repositório):
-  .\tests\diagnostico.ps1
 
 
 LOGS

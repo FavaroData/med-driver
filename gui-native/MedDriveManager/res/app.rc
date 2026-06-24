@@ -33,14 +33,14 @@ BEGIN
     LTEXT           "Pasta de destino:",    IDC_STATIC,            12,  71,  90,  9
     LTEXT           "",                     IDC_LBL_PRV_PATH,     108,  71, 200,  9
 
-    LTEXT           "Nome do arquivo:",      IDC_STATIC,            12,  84,  90,  9
+    LTEXT           "Nome do arquivo:",   IDC_STATIC,            12,  84,  90,  9
     LTEXT           "",                     IDC_LBL_PRV_BASENAME, 108,  84, 200,  9
 
-    LTEXT           "Caso o arquivo já exista:", IDC_STATIC,        12,  97,  90,  9
+    LTEXT           "Caso o arquivo já exista:",          IDC_STATIC,            12,  97,  90,  9
     LTEXT           "",                     IDC_LBL_PRV_STRATEGY, 108,  97, 200,  9
 
     LTEXT           "Abrir após gerar:",    IDC_STATIC,            12, 110,  90,  9
-    LTEXT           "",                     IDC_LBL_PRV_OPEN_AFTER, 108, 110, 200,  9
+    LTEXT           "",               IDC_LBL_PRV_OPEN_AFTER,     108, 110, 200,  9
 
     /* ── Seção: Nome da impressora ── */
     LTEXT           "NOME DA IMPRESSORA",   IDC_SECTION_LBL,       12, 126, 296,  9
@@ -63,7 +63,7 @@ BEGIN
 
     /* ── Seção: Saída ── */
     LTEXT           "SAÍDA",               IDC_SECTION_LBL,         12,  56, 296,  9
-    LTEXT           "Nome do arquivo:",     IDC_STATIC,              12,  70, 296,  9
+    LTEXT           "Nome do arquivo:",  IDC_STATIC,              12,  70, 296,  9
     EDITTEXT        IDC_EDIT_PROFILE_BASENAME,                       12,  80, 240,  14, ES_AUTOHSCROLL
     PUSHBUTTON      "Inserir variável",    IDC_BTN_PROFILE_TOKEN,   254,  80,  54,  14
 
