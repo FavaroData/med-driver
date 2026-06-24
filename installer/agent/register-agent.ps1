@@ -44,3 +44,7 @@ $root.RegisterTaskDefinition(
 ) | Out-Null
 
 Write-Output "  OK - tarefa 'MeddrivePrinterAgent' registrada no Task Scheduler"
+
+# Inicia imediatamente para a sessao atual (sem exigir logout/login)
+try { $root.GetTask("MeddrivePrinterAgent").Run($null) | Out-Null } catch {}
+Write-Output "  OK - agente iniciado para a sessao atual"
