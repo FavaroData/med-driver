@@ -4,7 +4,8 @@
 ;
 ; Pré-requisitos verificados em .onInit:
 ;   - Windows Vista SP2 ou superior (build >= 6002)
-;   - PowerShell 2.0 ou superior
+;   - PowerShell 2.0 — instalado automaticamente via deps\Windows6.0-KB968930-x64.msu se ausente
+; Ghostscript: 9.18 (sem dependência de UCRT — apenas DLLs nativas do Vista)
 
 Target amd64-unicode
 Unicode True
@@ -41,12 +42,6 @@ Clique em Avançar para continuar."
 
 !insertmacro MUI_LANGUAGE "PortugueseBR"
 
-; ---------- macro: copia DLL para System32 se ausente ----------
-!macro InstallDllIfMissing DLL_NAME
-    IfFileExists "$WINDIR\System32\${DLL_NAME}" +2
-        CopyFiles /SILENT "$INSTDIR\DLL\${DLL_NAME}" "$WINDIR\System32\"
-!macroend
-
 ; ---------- verificações de pré-requisito ----------
 Function .onInit
 
@@ -61,31 +56,55 @@ Instale o Windows Vista SP2 e tente novamente."
         Abort
 
     ; --- PowerShell 2.0 ---
-    ; Chave presente desde o PS 1.0; valor "PowerShellVersion" indica a versão instalada.
+    ; Chave presente desde o PS 1.0; dígito principal "1" = PS 1.x, ausente = não instalado.
+    ; A instalação em si ocorre no Section (onde a tela de progresso já está visível).
+    ; Aqui apenas detectamos e pedimos confirmação ao usuário, guardando o resultado em $R9.
+    StrCpy $R9 "0"   ; flag: 0 = PS ok, 1 = precisa instalar KB968930
     ReadRegStr $1 HKLM "SOFTWARE\Microsoft\PowerShell\1" "PowerShellVersion"
-
-    ${If} $1 == ""
-        MessageBox MB_OK|MB_ICONSTOP \
-            "PowerShell não foi encontrado.$\r$\n$\r$\n\
-Este aplicativo requer PowerShell 2.0 para funcionar.$\r$\n$\r$\n\
-Instale o PowerShell 2.0 via Windows Update (KB968930) e tente novamente."
-        Abort
-    ${EndIf}
-
-    ; Compara apenas o dígito principal da versão
     StrCpy $2 $1 1
+
     ${If} $2 == "1"
-        MessageBox MB_OK|MB_ICONSTOP \
-            "PowerShell 2.0 ou superior é necessário.$\r$\n$\r$\n\
-Versão detectada: $1$\r$\n$\r$\n\
-Instale o PowerShell 2.0 via Windows Update (KB968930) e tente novamente."
-        Abort
+    ${OrIf} $2 == ""
+        MessageBox MB_YESNO|MB_ICONQUESTION \
+            "PowerShell 2.0 não está instalado (versão detectada: '$1').$\r$\n$\r$\n\
+O instalador irá instalar o PowerShell 2.0 automaticamente.$\r$\n\
+Uma reinicialização pode ser necessária após a instalação.$\r$\n$\r$\n\
+Deseja continuar?" IDYES +2
+            Abort
+        StrCpy $R9 "1"
     ${EndIf}
 
 FunctionEnd
 
 ; ---------- instalação ----------
 Section "Instalar Meddrive Printer" SecInstall
+
+    ; --- instala PowerShell 2.0 se necessário (flag definido em .onInit) ---
+    ${If} $R9 == "1"
+        DetailPrint "Preparando instalação do PowerShell 2.0..."
+        InitPluginsDir
+        File "/oname=$PLUGINSDIR\KB968930-x64.msu" "deps\Windows6.0-KB968930-x64.msu"
+        DetailPrint "Instalando PowerShell 2.0 (KB968930) — aguarde, isso pode levar alguns minutos..."
+        ExecWait '"$WINDIR\System32\wusa.exe" "$PLUGINSDIR\KB968930-x64.msu" /quiet /norestart' $3
+        Delete "$PLUGINSDIR\KB968930-x64.msu"
+
+        ${If} $3 = 3010
+            DetailPrint "PowerShell 2.0 instalado — reinicialização necessária para concluir."
+            MessageBox MB_OK|MB_ICONINFORMATION \
+                "PowerShell 2.0 foi instalado com sucesso.$\r$\n$\r$\n\
+Uma reinicialização é necessária para concluir.$\r$\n\
+Reinicie o computador e execute o instalador novamente."
+            Quit
+        ${ElseIf} $3 <> 0
+            DetailPrint "ERRO: falha ao instalar PowerShell 2.0 (código $3)."
+            MessageBox MB_OK|MB_ICONSTOP \
+                "Falha ao instalar PowerShell 2.0 (código $3).$\r$\n$\r$\n\
+Instale manualmente via Windows Update (KB968930) e tente novamente."
+            Abort
+        ${Else}
+            DetailPrint "PowerShell 2.0 instalado com sucesso."
+        ${EndIf}
+    ${EndIf}
 
     ; extrai DLL e scripts para diretório temporário
     SetOutPath "$INSTDIR"
@@ -105,51 +124,12 @@ Section "Instalar Meddrive Printer" SecInstall
     ; lê ProgramData do ambiente Windows em tempo de execução
     ReadEnvStr $R0 "ProgramData"
 
-    ; extrai Ghostscript 9.56.1 para ProgramData
+    ; extrai Ghostscript 9.18 para ProgramData
+    ; GS 9.18 depende apenas de DLLs do sistema — sem UCRT ou runtime externo
     SetOutPath "$R0\Meddrive Printer\Ghostscript\bin"
-    File /r "..\..\gs\ghostscript-win7\bin\*"
+    File /r "..\..\gs\ghostscript-vista\bin\*"
     SetOutPath "$R0\Meddrive Printer\Ghostscript\lib"
-    File /r "..\..\gs\ghostscript-win7\lib\*"
-    SetOutPath "$R0\Meddrive Printer\Ghostscript\Resource"
-    File /r "..\..\gs\ghostscript-win7\Resource\*"
-    SetOutPath "$R0\Meddrive Printer\Ghostscript\iccprofiles"
-    File /r "..\..\gs\ghostscript-win7\iccprofiles\*"
-
-    ; instala DLLs de runtime ausentes (VC++ Runtime + Universal CRT)
-    ; O UCRT é suportado no Vista SP2 via KB2999226.
-    DetailPrint "Verificando DLLs de runtime..."
-    SetOutPath "$INSTDIR\DLL"
-    File "..\win7\DLL\vcruntime140.dll"
-    File "..\win7\DLL\vcruntime140_1.dll"
-    File "..\win7\DLL\ucrtbase.dll"
-    File "..\win7\DLL\api-ms-win-crt-convert-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-environment-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-filesystem-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-heap-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-locale-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-math-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-runtime-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-stdio-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-string-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-time-l1-1-0.dll"
-    File "..\win7\DLL\api-ms-win-crt-utility-l1-1-0.dll"
-
-    !insertmacro InstallDllIfMissing "vcruntime140.dll"
-    !insertmacro InstallDllIfMissing "vcruntime140_1.dll"
-    !insertmacro InstallDllIfMissing "ucrtbase.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-convert-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-environment-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-filesystem-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-heap-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-locale-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-math-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-runtime-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-stdio-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-string-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-time-l1-1-0.dll"
-    !insertmacro InstallDllIfMissing "api-ms-win-crt-utility-l1-1-0.dll"
-
-    RMDir /r "$INSTDIR\DLL"
+    File /r "..\..\gs\ghostscript-vista\lib\*"
 
     DetailPrint "Executando instalador..."
     nsExec::ExecToLog '"$INSTDIR\installer\install_helper.exe" "$INSTDIR\installer"'
@@ -180,6 +160,6 @@ Section "Instalar Meddrive Printer" SecInstall
 
     DetailPrint "Instalação concluída."
     DetailPrint "  Aplicativo : $R0\Meddrive Printer\MedDriveManager.exe"
-    DetailPrint "  Ghostscript: $R0\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+    DetailPrint "  Ghostscript: $R0\Meddrive Printer\Ghostscript\bin\gswin64c.exe (v9.18)"
 
 SectionEnd
