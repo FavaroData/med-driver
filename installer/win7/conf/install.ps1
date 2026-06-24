@@ -58,14 +58,14 @@ public class Win32PrintInstall {
 }
 "@ -ErrorAction SilentlyContinue
 
-# ── 1. Para o Spooler ─────────────────────────────────────────────────────
+# -- 1. Para o Spooler -----------------------------------------------------
 Write-Host "Parando o Spooler..."
 Stop-Service -Name Spooler -Force
 $p = Get-Process -Name spoolsv -ErrorAction SilentlyContinue
 if ($p) { $p.WaitForExit() }
 Trace-Step "Spooler parado"
 
-# ── 2. Copia DLL para System32 ────────────────────────────────────────────
+# -- 2. Copia DLL para System32 --------------------------------------------
 Write-Host "Copiando DLL para System32..."
 if (-not (Test-Path $DllSource)) {
     Write-Host "ERRO: DLL nao encontrada em $DllSource"
@@ -75,14 +75,14 @@ Trace-Step "copiando $DllSource para $DllDest"
 Copy-Item $DllSource $DllDest -Force
 Trace-Step "DLL copiada"
 
-# ── 3. Registra monitor no registry ──────────────────────────────────────
+# -- 3. Registra monitor no registry --------------------------------------
 Write-Host "Registrando monitor no registry..."
 Trace-Step "registrando monitor em $MonitorReg"
 if (-not (Test-Path $MonitorReg)) { New-Item -Path $MonitorReg | Out-Null }
 Set-ItemProperty -Path $MonitorReg -Name "Driver" -Value "meddrivemon.dll" -Type String
 Trace-Step "monitor registrado"
 
-# ── 4. Inicia Spooler ─────────────────────────────────────────────────────
+# -- 4. Inicia Spooler -----------------------------------------------------
 Write-Host "Iniciando o Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 5
@@ -98,7 +98,7 @@ if (-not (Test-Path $MonitorReg)) {
 }
 Write-Host "  OK - Spooler em execucao, monitor no registry"
 
-# ── 5. Instala driver PSCRIPT5 via AddPrinterDriverEx ────────────────────
+# -- 5. Instala driver PSCRIPT5 via AddPrinterDriverEx --------------------
 Write-Host "Instalando driver PSCRIPT5 customizado via AddPrinterDriverEx..."
 $ps5 = Get-ChildItem "$env:SystemRoot\System32\DriverStore\FileRepository" `
     -Recurse -Filter "PSCRIPT5.DLL" -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -125,7 +125,7 @@ if (-not $drvOk) {
 Set-ItemProperty $DriverKey -Name "PrinterDriverAttributes" -Value 2 -Type DWord
 Write-Host "  OK - driver '$DriverName' registrado via AddPrinterDriverEx"
 
-# ── 6. Instala PPD ────────────────────────────────────────────────────────
+# -- 6. Instala PPD --------------------------------------------------------
 Write-Host "Instalando PPD do driver..."
 $PpdSource = Join-Path $ScriptDir "MEDDRIVE.PPD"
 $PpdDest   = "$env:SystemRoot\System32\spool\drivers\x64\3\MEDDRIVE.PPD"
@@ -137,7 +137,7 @@ Copy-Item $PpdSource $PpdDest -Force
 Set-ItemProperty $DriverKey -Name "Dependent Files" -Value @("MEDDRIVE.PPD", "") -Type MultiString
 Write-Host "  OK - PPD copiado e registrado em Dependent Files"
 
-# ── 7. Reinicia Spooler para enumerar o driver ────────────────────────────
+# -- 7. Reinicia Spooler para enumerar o driver ----------------------------
 Write-Host "Reiniciando o Spooler para enumerar o driver..."
 Restart-Service -Name Spooler -Force
 Start-Sleep -Seconds 3
@@ -166,7 +166,7 @@ if (-not $driverFound) {
 }
 Write-Host "  OK - driver '$DriverName' reconhecido pelo spooler"
 
-# ── 8. Distribui aplicativo e scripts para ProgramData ───────────────────
+# -- 8. Distribui aplicativo e scripts para ProgramData -------------------
 Write-Host "Copiando aplicativo para $AppDir..."
 New-Item -ItemType Directory -Path $AppDir -Force | Out-Null
 Copy-Item (Join-Path $ScriptDir "add-printer.ps1")     "$AppDir\add-printer.ps1"     -Force

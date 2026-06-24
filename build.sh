@@ -51,6 +51,13 @@ $MINGW-gcc -mwindows \
 
 echo "  -> $OUT/MedDriveManager.exe"
 
+echo "=== Compilando MeddrivePrinterAgent.exe ==="
+$MINGW-gcc -mwindows -DUNICODE -D_UNICODE -DWINVER=0x0600 -D_WIN32_WINNT=0x0600 \
+    "$PROJ_ROOT/agent/MeddrivePrinterAgent.c" \
+    -ladvapi32 \
+    -o "$PROJ_ROOT/agent/MeddrivePrinterAgent.exe"
+echo "  -> $PROJ_ROOT/agent/MeddrivePrinterAgent.exe"
+
 echo "=== Compilando instalador NSIS (Win10/11) ==="
 cd "$PROJ_ROOT/installer/win10-11"
 makensis setup.nsi

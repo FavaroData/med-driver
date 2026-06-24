@@ -259,49 +259,119 @@ static void resolve_template(PORT_CONTEXT *ctx) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Converte o arquivo PostScript gerado pelo spooler em PDF usando o Ghostscript
-// executa o Ghostscript em um processo separado
-// retorna TRUE se o processo do Ghostscript terminou com sucesso
-// se não FALSE e mostra o erro no output debug
-// fecha o processo do Ghostscript
-static BOOL ConvertPsToPdf(PORT_CONTEXT *ctx) {
-    // parametros para criar o processo do Ghostscript
-    WCHAR            cmdLine[2048];
-    STARTUPINFOW     si = {0};
-    PROCESS_INFORMATION pi = {0};
-    DWORD            exitCode = 1;
-
-    si.cb = sizeof(si);
-
-    // determina o caminho de saída via template (grava em ctx->resolvedPath)
+// Executa o Ghostscript diretamente no contexto do Spooler (fallback sem agente)
+static BOOL ConvertPsToPdfDirect(PORT_CONTEXT *ctx) {
     resolve_template(ctx);
 
-    // executa o Ghostscript com o caminho enumerado
-    _snwprintf(cmdLine, 2048,
-        L"\"%s\" -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%s\" \"%s\"",
-        ctx->ghostscriptPath,
-        ctx->resolvedPath,
-        ctx->tempPsFile);
+    WCHAR outDir[MAX_PATH];
+    wcscpy_s(outDir, MAX_PATH, ctx->resolvedPath);
+    WCHAR *slash = wcsrchr(outDir, L'\\');
+    if (slash) *slash = L'\0';
+    CreateDirectoryW(outDir, NULL);
 
-    // cria o processo do Ghostscript
-    // retorna TRUE ou FALSE se o processo foi criado com sucesso ou não
-    // em caso de falha, mostra o erro no output debug do Windows (pode ser visualizado com ferramentas como DebugView)
-    LogDebug("ConvertPsToPdf: cmd=%ls\n", cmdLine);
- 
-    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE, CREATE_NO_WINDOW,
-                        NULL, NULL, &si, &pi)) {
-        DWORD err = GetLastError();
-        LogDebug("ConvertPsToPdf: CreateProcess FALHOU err=%lu\n", err);
+    WCHAR cmdLine[MAX_PATH * 4];
+    _snwprintf(cmdLine, MAX_PATH * 4,
+        L"\"%s\" -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite "
+        L"-sOutputFile=\"%s\" \"%s\"",
+        ctx->ghostscriptPath, ctx->resolvedPath, ctx->tempPsFile);
+    LogDebug("ConvertDirect: %ls\n", cmdLine);
+
+    STARTUPINFOW si = {0};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi = {0};
+    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
+                        CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+        LogDebug("ConvertDirect: CreateProcess falhou err=%lu\n", GetLastError());
         return FALSE;
     }
- 
-    // Espera o Ghostscript terminar sem limite de tempo
     WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 0;
     GetExitCodeProcess(pi.hProcess, &exitCode);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
-    LogDebug("ConvertPsToPdf: exitCode=%lu\n", exitCode);
+    LogDebug("ConvertDirect: GS exitCode=%lu\n", exitCode);
     return exitCode == 0;
+}
+
+// Protocolo de comunicação com o MeddrivePrinterAgent via named pipe
+typedef struct {
+    WCHAR psTempPath[MAX_PATH];
+    WCHAR outputPath[MAX_PATH];
+    WCHAR gsPath[MAX_PATH];
+} PrintJobMsg;
+
+typedef struct {
+    DWORD exitCode;
+    WCHAR errorMsg[512];
+} PrintJobResponse;
+
+// Envia o job para o MeddrivePrinterAgent (roda na sessão do usuário com credenciais de rede)
+// e aguarda a resposta de forma síncrona.
+// Retorna TRUE se o GS terminou com exitCode=0, FALSE caso contrário.
+static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
+    // obtém o SessionId do usuário que imprimiu via token de impersonação
+    // ImpersonatePrinterClient não está no import lib do MinGW — carregamos via GetProcAddress
+    typedef BOOL (WINAPI *FnImpersonate)(HANDLE);
+    DWORD sessionId = 0;
+    if (ctx->hPrinter) {
+        HMODULE hWinspool = GetModuleHandleW(L"winspool.drv");
+        FnImpersonate fnImp = hWinspool ?
+            (FnImpersonate)GetProcAddress(hWinspool, "ImpersonatePrinterClient") : NULL;
+        if (fnImp && fnImp(ctx->hPrinter)) {
+            HANDLE hToken = NULL;
+            if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, FALSE, &hToken)) {
+                DWORD returned = 0;
+                GetTokenInformation(hToken, TokenSessionId,
+                                    &sessionId, sizeof(DWORD), &returned);
+                CloseHandle(hToken);
+            }
+            RevertToSelf();
+        } else {
+            LogDebug("CallAgent: ImpersonatePrinterClient indisponivel\n");
+        }
+    }
+    LogDebug("CallAgent: sessionId=%lu\n", sessionId);
+
+    // constrói o nome do pipe do agente para esta sessão
+    WCHAR pipeName[64];
+    _snwprintf(pipeName, 64, L"\\\\.\\pipe\\MeddrivePrinter_%lu", sessionId);
+    LogDebug("CallAgent: conectando em %ls\n", pipeName);
+
+    // conecta ao pipe — falha imediata se o agente não estiver rodando
+    HANDLE hPipe = CreateFileW(pipeName,
+        GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+    if (hPipe == INVALID_HANDLE_VALUE) {
+        DWORD err = GetLastError();
+        if (err == ERROR_PIPE_BUSY) {
+            WaitNamedPipeW(pipeName, 5000);
+            hPipe = CreateFileW(pipeName,
+                GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+        }
+    }
+    if (hPipe == INVALID_HANDLE_VALUE) {
+        LogDebug("CallAgent: pipe indisponivel err=%lu — fallback para GS direto\n",
+            GetLastError());
+        return ConvertPsToPdfDirect(ctx);
+    }
+
+    // pipe disponível: resolve template e envia parâmetros ao agente
+    resolve_template(ctx);
+    PrintJobMsg msg = {0};
+    wcscpy_s(msg.psTempPath, MAX_PATH, ctx->tempPsFile);
+    wcscpy_s(msg.outputPath, MAX_PATH, ctx->resolvedPath);
+    wcscpy_s(msg.gsPath,     MAX_PATH, ctx->ghostscriptPath);
+    DWORD written = 0;
+    WriteFile(hPipe, &msg, sizeof(msg), &written, NULL);
+    LogDebug("CallAgent: msg enviada (%lu bytes)\n", written);
+
+    // aguarda resposta do agente (bloqueante — o agente roda o GS e responde)
+    PrintJobResponse resp = {0};
+    DWORD bytesRead = 0;
+    ReadFile(hPipe, &resp, sizeof(resp), &bytesRead, NULL);
+    CloseHandle(hPipe);
+
+    LogDebug("CallAgent: exitCode=%lu msg=%ls\n", resp.exitCode, resp.errorMsg);
+    return resp.exitCode == 0;
 }
 
 
@@ -497,6 +567,19 @@ static BOOL WINAPI Monitor_StartDocPort(
         LogDebug("StartDocPort: docName = %ls\n", ctx->docName);
     }
 
+    // guarda nome e handle da impressora para ImpersonatePrinterClient em EndDocPort
+    ctx->printerName[0] = L'\0';
+    ctx->hPrinter = NULL;
+    if (pPrinterName) {
+        wcsncpy_s(ctx->printerName, 512, pPrinterName, _TRUNCATE);
+        if (!OpenPrinterW(ctx->printerName, &ctx->hPrinter, NULL)) {
+            ctx->hPrinter = NULL;
+            LogDebug("StartDocPort: OpenPrinter falhou err=%lu\n", GetLastError());
+        } else {
+            LogDebug("StartDocPort: hPrinter=%p\n", (void*)ctx->hPrinter);
+        }
+    }
+
     return ok;
 }
 
@@ -561,10 +644,10 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     ctx->hTempFile = INVALID_HANDLE_VALUE;
     LogDebug("EndDocPort: arquivo=%ls\n", ctx->tempPsFile);
  
-    // chama a função de conversão de PS para PDF
-    LogDebug("EndDocPort: chamando Ghostscript\n");
-    ok = ConvertPsToPdf(ctx);
-    LogDebug("EndDocPort: ConvertPsToPdf=%s\n", ok ? "OK" : "FALHOU");
+    // delega conversão PS→PDF ao MeddrivePrinterAgent (roda com credenciais do usuário)
+    LogDebug("EndDocPort: chamando agente\n");
+    ok = CallAgentForConversion(ctx);
+    LogDebug("EndDocPort: CallAgentForConversion=%s\n", ok ? "OK" : "FALHOU");
     // deleta o arquivo temporário
     // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
     DeleteFileW(ctx->tempPsFile);
@@ -585,11 +668,12 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
 static BOOL WINAPI Monitor_ClosePort(HANDLE hPort) {
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
 
-    // se o arquivo temporário ainda estiver aberto, fecha o handle para evitar vazamento de handle
     if (ctx->hTempFile != INVALID_HANDLE_VALUE)
         CloseHandle(ctx->hTempFile);
 
-    // libera a memória
+    if (ctx->hPrinter)
+        ClosePrinter(ctx->hPrinter);
+
     HeapFree(GetProcessHeap(), 0, ctx);
     return TRUE;
 }

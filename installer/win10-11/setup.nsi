@@ -101,6 +101,9 @@ Section "Instalar Meddrive Printer" SecInstall
     File "MEDDRIVE.PPD"
     File "conf\install.ps1"
     File "x64\Debug\MedDriveManager.exe"
+    File "..\..\agent\MeddrivePrinterAgent.exe"
+    SetOutPath "$INSTDIR\installer\agent"
+    File "..\agent\register-agent.ps1"
     SetOutPath "$INSTDIR\installer\conf"
     File "conf\add-printer.ps1"
     File "conf\create-profile.ps1"
@@ -126,7 +129,17 @@ Section "Instalar Meddrive Printer" SecInstall
     nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\install.ps1"'
     Pop $0
 
+    DetailPrint "Registrando agente no Task Scheduler..."
+    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\agent\register-agent.ps1"'
+    Pop $1
+    ${If} $1 != 0
+        DetailPrint "AVISO: falha ao registrar MeddrivePrinterAgent (codigo $1)"
+    ${EndIf}
+
     ; limpa temporários (arquivos já copiados para ProgramData pelo install.ps1)
+    Delete "$INSTDIR\installer\agent\register-agent.ps1"
+    RMDir  "$INSTDIR\installer\agent"
+    Delete "$INSTDIR\installer\MeddrivePrinterAgent.exe"
     Delete "$INSTDIR\installer\install.ps1"
     Delete "$INSTDIR\installer\conf\add-printer.ps1"
     Delete "$INSTDIR\installer\conf\create-profile.ps1"

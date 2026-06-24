@@ -45,7 +45,7 @@ public class Win32RemovePrinter {
 }
 "@ -ErrorAction SilentlyContinue
 
-# ── Garante Spooler em execucao ───────────────────────────────────────────
+# -- Garante Spooler em execucao -------------------------------------------
 Log "Verificando Spooler..."
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
@@ -54,7 +54,7 @@ if ($spoolerStatus -ne 'Running') {
 }
 Trace-Step "Spooler em execucao"
 
-# ── Remove via OpenPrinter + DeletePrinter ────────────────────────────────
+# -- Remove via OpenPrinter + DeletePrinter --------------------------------
 Log "Removendo impressora '$PrinterName'..."
 $hPrinter = [IntPtr]::Zero
 if ([Win32RemovePrinter]::OpenPrinter($PrinterName, [ref]$hPrinter, [IntPtr]::Zero)) {

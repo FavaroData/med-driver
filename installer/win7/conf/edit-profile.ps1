@@ -97,7 +97,7 @@ public class PortMgrWin7 {
 }
 "@ -ErrorAction SilentlyContinue
 
-# ── Spooler ───────────────────────────────────────────────────────────────
+# -- Spooler ---------------------------------------------------------------
 Log "Iniciando o Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 2

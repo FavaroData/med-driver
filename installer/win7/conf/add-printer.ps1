@@ -79,7 +79,7 @@ public class Win32AddPrinter {
 }
 "@ -ErrorAction SilentlyContinue
 
-# ── Pre-requisitos ────────────────────────────────────────────────────────
+# -- Pre-requisitos --------------------------------------------------------
 $DllPath = "$env:SystemRoot\System32\meddrivemon.dll"
 if (-not (Test-Path $DllPath)) {
     Log "ERRO: meddrivemon.dll nao encontrada em $DllPath. Execute o instalador principal antes de adicionar impressoras."
@@ -123,7 +123,7 @@ if (-not $driverFound) {
 }
 Trace-Step "driver encontrado"
 
-# ── Verifica o perfil ─────────────────────────────────────────────────────
+# -- Verifica o perfil -----------------------------------------------------
 $PortName = "Meddrive Printer PORT $ProfileName"
 $PortReg  = "$MonitorReg\Ports\$PortName"
 
@@ -134,7 +134,7 @@ if (-not (Test-Path $PortReg)) {
 }
 Trace-Step "perfil encontrado em $PortReg"
 
-# ── Spooler ───────────────────────────────────────────────────────────────
+# -- Spooler ---------------------------------------------------------------
 Log "Iniciando o Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 5
@@ -147,7 +147,7 @@ if ($spoolerStatus -ne 'Running') {
 }
 Log "  OK - Spooler em execucao"
 
-# ── Remove impressora existente se houver ─────────────────────────────────
+# -- Remove impressora existente se houver ---------------------------------
 $hExisting = [IntPtr]::Zero
 if ([Win32AddPrinter]::OpenPrinter($PrinterName, [ref]$hExisting, [IntPtr]::Zero)) {
     Log "Impressora '$PrinterName' ja existe, removendo para recriar..."
@@ -157,7 +157,7 @@ if ([Win32AddPrinter]::OpenPrinter($PrinterName, [ref]$hExisting, [IntPtr]::Zero
     Trace-Step "impressora existente removida"
 }
 
-# ── Registra a impressora via AddPrinterW ─────────────────────────────────
+# -- Registra a impressora via AddPrinterW ---------------------------------
 $pi2                 = New-Object Win32AddPrinter+PRINTER_INFO_2
 $pi2.pPrinterName    = $PrinterName
 $pi2.pPortName       = $PortName

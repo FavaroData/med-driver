@@ -53,7 +53,7 @@ public class Win32CreateProfile {
 }
 "@ -ErrorAction SilentlyContinue
 
-# ── Pre-requisitos ────────────────────────────────────────────────────────
+# -- Pre-requisitos --------------------------------------------------------
 $DllPath = "$env:SystemRoot\System32\meddrivemon.dll"
 if (-not (Test-Path $DllPath)) {
     Log "ERRO: meddrivemon.dll nao encontrada em $DllPath."
@@ -94,7 +94,7 @@ if (-not $driverFound) {
 }
 Trace-Step "driver encontrado"
 
-# ── Configuracao da porta/perfil ──────────────────────────────────────────
+# -- Configuracao da porta/perfil ------------------------------------------
 $PortName = "Meddrive Printer PORT $ProfileName"
 $PortReg  = "$MonitorReg\Ports\$PortName"
 
@@ -113,7 +113,7 @@ if (-not (Test-Path $OutputPath)) {
     Trace-Step "pasta de destino criada: $OutputPath"
 }
 
-# ── Spooler ───────────────────────────────────────────────────────────────
+# -- Spooler ---------------------------------------------------------------
 Log "Iniciando o Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 5
@@ -129,7 +129,7 @@ if (-not (Test-Path $PortReg)) {
 }
 Log "  OK - Spooler em execucao, porta no registry"
 
-# ── Registra a porta via AddPortExW ──────────────────────────────────────
+# -- Registra a porta via AddPortExW --------------------------------------
 $pi1       = New-Object Win32CreateProfile+PORT_INFO_1
 $pi1.pName = $PortName
 Log "Registrando porta via AddPortExW..."

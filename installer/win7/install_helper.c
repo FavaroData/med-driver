@@ -367,7 +367,9 @@ int main(void)
         if (!copy_file_w(src, dst)) { if (g_log) fclose(g_log); return 1; }
     }
 
-    const wchar_t *rootFiles[] = { L"MEDDRIVE.PPD", L"MedDriveManager.exe", NULL };
+    const wchar_t *rootFiles[] = {
+        L"MEDDRIVE.PPD", L"MedDriveManager.exe", NULL
+    };
     for (int i = 0; rootFiles[i]; i++) {
         wchar_t src[MAX_PATH], dst[MAX_PATH];
         _snwprintf(src, MAX_PATH, L"%s\\%s", instDir, rootFiles[i]);

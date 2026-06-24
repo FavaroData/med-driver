@@ -71,7 +71,7 @@ public class Win32EditPrinter {
 }
 "@ -ErrorAction SilentlyContinue
 
-# ── Verifica impressora via WMI ───────────────────────────────────────────
+# -- Verifica impressora via WMI -------------------------------------------
 $filter     = "Name='" + $OldPrinterName + "'"
 $wmiPrinter = Get-WmiObject Win32_Printer -Filter $filter -ErrorAction SilentlyContinue
 if (-not $wmiPrinter) {
@@ -80,21 +80,21 @@ if (-not $wmiPrinter) {
     exit 1
 }
 
-# ── Verifica porta/perfil no registry ────────────────────────────────────
+# -- Verifica porta/perfil no registry ------------------------------------
 if (-not (Test-Path $PortReg)) {
     Log "[ERRO] Porta '$PortName' nao encontrada no registry. Verifique se o perfil existe."
     $LogWriter.Close()
     exit 1
 }
 
-# ── Renomeia se necessario via WMI ───────────────────────────────────────
+# -- Renomeia se necessario via WMI ---------------------------------------
 if ($OldPrinterName -ne $NewPrinterName) {
     Log "[INFO] Renomeando '$OldPrinterName' para '$NewPrinterName'..."
     $wmiPrinter.Rename($NewPrinterName) | Out-Null
     Log "[INFO] Renomear concluido."
 }
 
-# ── Troca porta se necessario via SetPrinterW ────────────────────────────
+# -- Troca porta se necessario via SetPrinterW ----------------------------
 if ($wmiPrinter.PortName -ne $PortName) {
     Log "[INFO] Alterando perfil para '$ProfileName'..."
     $hPrinter = [IntPtr]::Zero

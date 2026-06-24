@@ -47,7 +47,7 @@ if (-not (Test-Path $PortReg)) {
 }
 Trace-Step "perfil encontrado em $PortReg"
 
-# ── Spooler ───────────────────────────────────────────────────────────────
+# -- Spooler ---------------------------------------------------------------
 Log "Iniciando o Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 2
@@ -60,7 +60,7 @@ if ($spoolerStatus -ne 'Running') {
 }
 Trace-Step "Spooler em execucao"
 
-# ── DeletePortW via P/Invoke ──────────────────────────────────────────────
+# -- DeletePortW via P/Invoke ----------------------------------------------
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -79,7 +79,7 @@ if (-not $ok) {
     Trace-Step "porta removida via DeletePortW"
 }
 
-# ── Remove chave do registry ──────────────────────────────────────────────
+# -- Remove chave do registry ----------------------------------------------
 Remove-Item -Path $PortReg -Recurse -Force
 Trace-Step "chave do registry removida"
 
