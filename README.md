@@ -15,6 +15,7 @@ Não exige interação do usuário após a instalação — basta instalar, cria
 | `MedDriveManager.exe` | Aplicativo gráfico de gerenciamento de perfis e impressoras |
 | `MeddrivePrinter-Setup.exe` | Instalador para Windows 10/11 |
 | `MeddrivePrinter-Win7-Setup.exe` | Instalador para Windows 7 x64 |
+| `MeddrivePrinter-Vista-Setup.exe` | Instalador para Windows Vista x64 SP2 |
 
 ### Código-fonte da DLL
 
@@ -66,6 +67,12 @@ Todas as configurações (caminho de saída, nome de arquivo, estratégia de con
 - PowerShell 2.0+
 - Execução como Administrador
 
+**Windows Vista x64 SP2:**
+- Vista SP2 obrigatório (build ≥ 6002)
+- PowerShell 2.0 obrigatório (KB968930 — não vem instalado em todas as edições)
+- Ghostscript 9.56.1 (bundled, mesmo bundle do Win7)
+- Execução como Administrador
+
 ---
 
 ## Instalação
@@ -77,6 +84,11 @@ Execute `MeddrivePrinter-Setup.exe` como administrador.
 Execute `MeddrivePrinter-Win7-Setup.exe` como administrador.
 
 O instalador Win7 usa `install_helper.exe` (binário nativo C) em vez de PowerShell para registrar o monitor e o driver, contornando limitações do PS 2.0.
+
+### Windows Vista SP2
+Antes de instalar, certifique-se de que o **PowerShell 2.0** está instalado (KB968930 via Windows Update). O instalador verifica isso automaticamente e aborta com instruções se não estiver presente.
+
+Execute `MeddrivePrinter-Vista-Setup.exe` como administrador.
 
 > Se aparecer o erro "execução de scripts foi desabilitada", execute:
 > ```powershell
@@ -126,3 +138,4 @@ Gera:
 - `installer/win10-11/x64/Debug/MedDriveManager.exe`
 - `MeddrivePrinter-Setup.exe`
 - `MeddrivePrinter-Win7-Setup.exe`
+- `MeddrivePrinter-Vista-Setup.exe`

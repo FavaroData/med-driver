@@ -349,13 +349,17 @@ Get-Printer | Where-Object { $_.PortName -like "Meddrive*" } | Select-Object Nam
 
 ## 12. Compatibilidade
 
-| Sistema | Suporte |
-|---|---|
-| Windows 10 x64 | ✓ Testado |
-| Windows 11 x64 | ✓ Testado |
-| Windows 7 x64 | ✓ Suportado via install_helper.exe + Ghostscript 9.56.1 |
-| Windows x86 (32-bit) | ✗ DLL 64-bit incompatível |
+| Sistema | Suporte | Instalador |
+|---|---|---|
+| Windows 11 x64 | ✓ Testado | `MeddrivePrinter-Setup.exe` |
+| Windows 10 x64 | ✓ Testado | `MeddrivePrinter-Setup.exe` |
+| Windows 7 x64 | ✓ Suportado | `MeddrivePrinter-Win7-Setup.exe` |
+| Windows Vista x64 **SP2** | ✓ Suportado (requer PS 2.0) | `MeddrivePrinter-Vista-Setup.exe` |
+| Windows Vista x64 RTM/SP1 | ✗ UCRT não disponível | — |
+| Windows x86 (32-bit) | ✗ DLL 64-bit incompatível | — |
 
 **Ghostscript:**
 - Win10/11: 10.x (bundlado no instalador)
-- Win7: 9.56.1 obrigatório (versões 10.x crasham com STATUS_ACCESS_VIOLATION)
+- Win7 / Vista SP2: 9.56.1 + DLLs UCRT bundladas (versões 10.x não são compatíveis com Win7/Vista)
+
+Ver `docs/winvista-particularidades.md` para detalhes do suporte ao Vista.
