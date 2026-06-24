@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <shellapi.h>
+#include <wtsapi32.h>
 
 static HKEY        g_hkRoot   = NULL;
 static MONITOR2    g_monitor2 = {0};
@@ -259,40 +260,6 @@ static void resolve_template(PORT_CONTEXT *ctx) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Executa o Ghostscript diretamente no contexto do Spooler (fallback sem agente)
-static BOOL ConvertPsToPdfDirect(PORT_CONTEXT *ctx) {
-    resolve_template(ctx);
-
-    WCHAR outDir[MAX_PATH];
-    wcscpy_s(outDir, MAX_PATH, ctx->resolvedPath);
-    WCHAR *slash = wcsrchr(outDir, L'\\');
-    if (slash) *slash = L'\0';
-    CreateDirectoryW(outDir, NULL);
-
-    WCHAR cmdLine[MAX_PATH * 4];
-    _snwprintf(cmdLine, MAX_PATH * 4,
-        L"\"%s\" -dNOPAUSE -dBATCH -dSAFER -sDEVICE=pdfwrite "
-        L"-sOutputFile=\"%s\" \"%s\"",
-        ctx->ghostscriptPath, ctx->resolvedPath, ctx->tempPsFile);
-    LogDebug("ConvertDirect: %ls\n", cmdLine);
-
-    STARTUPINFOW si = {0};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi = {0};
-    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-                        CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
-        LogDebug("ConvertDirect: CreateProcess falhou err=%lu\n", GetLastError());
-        return FALSE;
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 0;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    LogDebug("ConvertDirect: GS exitCode=%lu\n", exitCode);
-    return exitCode == 0;
-}
-
 // Protocolo de comunicação com o MeddrivePrinterAgent via named pipe
 typedef struct {
     WCHAR psTempPath[MAX_PATH];
@@ -349,9 +316,20 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
         }
     }
     if (hPipe == INVALID_HANDLE_VALUE) {
-        LogDebug("CallAgent: pipe indisponivel err=%lu — fallback para GS direto\n",
+        LogDebug("CallAgent: pipe indisponivel err=%lu — agente nao esta rodando\n",
             GetLastError());
-        return ConvertPsToPdfDirect(ctx);
+        static const WCHAR title[] = L"Meddrive Printer";
+        static const WCHAR msg[]   =
+            L"O MeddrivePrinterAgent nao esta em execucao.\n\n"
+            L"O job de impressao foi cancelado.\n\n"
+            L"Verifique se a tarefa 'MeddrivePrinterAgent' esta ativa no Agendador de Tarefas "
+            L"e faca login novamente para inicia-la.";
+        DWORD response = 0;
+        WTSSendMessageW(WTS_CURRENT_SERVER_HANDLE, sessionId,
+            (LPWSTR)title, (DWORD)(wcslen(title) * sizeof(WCHAR)),
+            (LPWSTR)msg,   (DWORD)(wcslen(msg)   * sizeof(WCHAR)),
+            MB_OK | MB_ICONERROR, 0, &response, FALSE);
+        return FALSE;
     }
 
     // pipe disponível: resolve template e envia parâmetros ao agente
