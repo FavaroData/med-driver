@@ -276,27 +276,10 @@ typedef struct {
 // e aguarda a resposta de forma síncrona.
 // Retorna TRUE se o GS terminou com exitCode=0, FALSE caso contrário.
 static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
-    // obtém o SessionId do usuário que imprimiu via token de impersonação
-    // ImpersonatePrinterClient não está no import lib do MinGW — carregamos via GetProcAddress
-    typedef BOOL (WINAPI *FnImpersonate)(HANDLE);
-    DWORD sessionId = 0;
-    if (ctx->hPrinter) {
-        HMODULE hWinspool = GetModuleHandleW(L"winspool.drv");
-        FnImpersonate fnImp = hWinspool ?
-            (FnImpersonate)GetProcAddress(hWinspool, "ImpersonatePrinterClient") : NULL;
-        if (fnImp && fnImp(ctx->hPrinter)) {
-            HANDLE hToken = NULL;
-            if (OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, FALSE, &hToken)) {
-                DWORD returned = 0;
-                GetTokenInformation(hToken, TokenSessionId,
-                                    &sessionId, sizeof(DWORD), &returned);
-                CloseHandle(hToken);
-            }
-            RevertToSelf();
-        } else {
-            LogDebug("CallAgent: ImpersonatePrinterClient indisponivel\n");
-        }
-    }
+    // obtém o SessionId da sessão interativa do console
+    // WTSGetActiveConsoleSessionId é mais confiável que ImpersonatePrinterClient
+    // no contexto do Spooler, pois winspool.drv não está carregado em spoolsv.exe
+    DWORD sessionId = WTSGetActiveConsoleSessionId();
     LogDebug("CallAgent: sessionId=%lu\n", sessionId);
 
     // constrói o nome do pipe do agente para esta sessão
@@ -545,19 +528,6 @@ static BOOL WINAPI Monitor_StartDocPort(
         LogDebug("StartDocPort: docName = %ls\n", ctx->docName);
     }
 
-    // guarda nome e handle da impressora para ImpersonatePrinterClient em EndDocPort
-    ctx->printerName[0] = L'\0';
-    ctx->hPrinter = NULL;
-    if (pPrinterName) {
-        wcsncpy_s(ctx->printerName, 512, pPrinterName, _TRUNCATE);
-        if (!OpenPrinterW(ctx->printerName, &ctx->hPrinter, NULL)) {
-            ctx->hPrinter = NULL;
-            LogDebug("StartDocPort: OpenPrinter falhou err=%lu\n", GetLastError());
-        } else {
-            LogDebug("StartDocPort: hPrinter=%p\n", (void*)ctx->hPrinter);
-        }
-    }
-
     return ok;
 }
 
@@ -648,9 +618,6 @@ static BOOL WINAPI Monitor_ClosePort(HANDLE hPort) {
 
     if (ctx->hTempFile != INVALID_HANDLE_VALUE)
         CloseHandle(ctx->hTempFile);
-
-    if (ctx->hPrinter)
-        ClosePrinter(ctx->hPrinter);
 
     HeapFree(GetProcessHeap(), 0, ctx);
     return TRUE;
