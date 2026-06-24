@@ -13,7 +13,6 @@
 #define _WIN32_WINNT 0x0600
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <sddl.h>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -55,11 +54,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
     _snwprintf(pipeName, 64, PIPE_PREFIX L"%lu", sessionId);
     Log("[agent] inicio: sessao=%lu pipe=%ls\n", sessionId, pipeName);
 
-    /* Permite que SYSTEM (a DLL no Spooler, sessão 0) conecte ao pipe */
-    PSECURITY_DESCRIPTOR pSD = NULL;
-    ConvertStringSecurityDescriptorToSecurityDescriptorW(
-        L"D:(A;;GA;;;SY)(A;;GA;;;CO)", SDDL_REVISION_1, &pSD, NULL);
-    SECURITY_ATTRIBUTES sa = { sizeof(sa), pSD, FALSE };
+    /* NULL DACL: concede acesso total a qualquer processo local.
+       O pipe é IPC local (sem exposição de rede), necessário para que
+       o SYSTEM (Spooler, sessão 0) consiga conectar ao pipe do usuário. */
+    SECURITY_DESCRIPTOR sd;
+    InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+    SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE);
+    SECURITY_ATTRIBUTES sa = { sizeof(sa), &sd, FALSE };
 
     for (;;) {
         HANDLE hPipe = CreateNamedPipeW(
@@ -132,6 +133,5 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
         CloseHandle(hPipe);
     }
 
-    if (pSD) LocalFree(pSD);
     return 0;
 }
