@@ -1,4 +1,4 @@
-# Meddrive Printer v2.5
+# Meddrive Printer v2.8
 > Desenvolvido para a empresa **StachIt**.
 
 Impressora virtual PDF para Windows que captura jobs de impressão e os converte automaticamente em arquivos PDF, salvando-os em uma pasta configurável.
@@ -11,19 +11,22 @@ Não exige interação do usuário após a instalação — basta instalar, cria
 
 | Arquivo | Descrição |
 |---|---|
-| `meddrivemon.dll` | DLL do monitor de impressão — toda a lógica de interação com o Spooler e o Ghostscript |
+| `meddrivemon.dll` | DLL do monitor de impressão — intercepta jobs do Spooler e delega ao agente via named pipe |
+| `MeddrivePrinterAgent.exe` | Agente de sessão — executa o Ghostscript com credenciais de rede do usuário logado |
 | `MedDriveManager.exe` | Aplicativo gráfico de gerenciamento de perfis e impressoras |
 | `MeddrivePrinter-Setup.exe` | Instalador para Windows 10/11 |
 | `MeddrivePrinter-Win7-Setup.exe` | Instalador para Windows 7 x64 |
 | `MeddrivePrinter-Vista-Setup.exe` | Instalador para Windows Vista x64 SP2 |
 
-### Código-fonte da DLL
+### Código-fonte
 
 | Arquivo | Descrição |
 |---|---|
 | `src/monitor.c` | Implementação do monitor de impressão (MONITOR2 API) |
 | `src/monitor.h` | Variáveis e estruturas compartilhadas |
 | `src/monitor.def` | Exportações lidas pelo Spooler |
+| `agent/MeddrivePrinterAgent.c` | Agente de sessão de usuário (named pipe + Ghostscript) |
+| `installer/agent/register-agent.ps1` | Registro do agente no Task Scheduler (COM, compatível Vista+) |
 
 ### Scripts de gerenciamento (`installer/*/conf/`)
 
@@ -40,18 +43,20 @@ Não exige interação do usuário após a instalação — basta instalar, cria
 
 ## Como funciona
 
-O driver é baseado na arquitetura **PSCRIPT5** (PostScript) do Windows. Ao imprimir, o Spooler converte o documento para PostScript e entrega os bytes ao monitor. O monitor então chama o **Ghostscript** para converter o PostScript em PDF, gravando o resultado no caminho configurado no perfil.
+O driver é baseado na arquitetura **PSCRIPT5** (PostScript) do Windows. Ao imprimir, o Spooler converte o documento para PostScript e entrega os bytes ao monitor (`meddrivemon.dll`). O monitor delega a conversão ao **MeddrivePrinterAgent** via named pipe — um processo leve que roda na sessão interativa do usuário e executa o **Ghostscript** com as credenciais de rede do usuário, permitindo salvar PDFs em pastas de rede (`\\servidor\pasta`).
 
 Todas as configurações (caminho de saída, nome de arquivo, estratégia de conflito) são armazenadas no **Registry do Windows** e lidas pelo monitor em tempo de execução a cada job.
 
 ### Fluxo de um job de impressão
 
-1. O Spooler carrega `meddrivemon.dll` e chama `InitializePrintMonitor2`, preenchendo a estrutura `MONITOR2` com os ponteiros de função.
-2. O Spooler consulta as portas disponíveis — o monitor lê as subchaves de `Ports\` no registry e retorna cada uma como porta virtual.
-3. Ao receber um job, o Spooler chama `OpenPort`. O monitor aloca um `PORT_CONTEXT` e lê `OutputPath`, `OutputBaseName`, `GhostscriptPath` e `OverwriteFile` do registry.
-4. O monitor cria um arquivo `.ps` temporário em `%TEMP%` e acumula os bytes PostScript entregues pelo Spooler.
-5. Ao finalizar o job, o monitor fecha o arquivo, invoca o Ghostscript, aguarda a conclusão e deleta o temporário.
-6. `Monitor_ClosePort` libera o `PORT_CONTEXT`.
+1. O Spooler carrega `meddrivemon.dll` e chama `InitializePrintMonitor2`.
+2. O Spooler consulta as portas disponíveis — o monitor lê as subchaves de `Ports\` no registry.
+3. Ao receber um job, o Spooler chama `OpenPort`. O monitor aloca um `PORT_CONTEXT` e lê as configurações do registry.
+4. O monitor acumula os bytes PostScript em um arquivo temporário em `C:\Windows\Temp\`.
+5. Ao finalizar o job (`EndDocPort`), o monitor resolve o nome de saída (template + numeração), localiza a sessão interativa via `WTSGetActiveConsoleSessionId()` e conecta ao named pipe `\\.\pipe\MeddrivePrinter_<sessionId>`.
+6. O `MeddrivePrinterAgent` (rodando na sessão do usuário) recebe o job, executa o Ghostscript e devolve o código de saída.
+7. O monitor deleta o temporário; se `OpenAfterGenerate` estiver ativo, abre o PDF no visualizador padrão.
+8. Se o agente não estiver rodando, o monitor exibe uma mensagem de erro na sessão do usuário via `WTSSendMessage` e cancela o job.
 
 ---
 

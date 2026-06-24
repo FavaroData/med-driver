@@ -1,5 +1,5 @@
 # Meddrive Printer — Documentação Técnica
-**v2.5 · Junho 2026**
+**v2.8 · Junho 2026**
 
 ---
 
@@ -47,9 +47,10 @@ O Windows Print Spooler foi projetado para que monitores de porta customizados s
 |---|---|---|
 | Driver | PSCRIPT5.DLL (Meddrive Printer DRIVER) | Converte o documento em PostScript |
 | PPD | MEDDRIVE.PPD | Descreve as capacidades da impressora para o PSCRIPT5 |
-| Monitor | meddrivemon.dll (Meddrive Printer MONITOR) | Recebe os bytes PS e aciona o Ghostscript |
+| Monitor | meddrivemon.dll (Meddrive Printer MONITOR) | Recebe os bytes PS, delega conversão ao agente via named pipe |
 | Porta | Meddrive Printer PORT `<nome>` | Ponto de conexão entre driver e monitor — uma por perfil |
 | Impressora | Meddrive Printer `<nome>` | Objeto visível ao usuário no Windows |
+| Agente | MeddrivePrinterAgent.exe | Roda na sessão do usuário; executa o Ghostscript com credenciais de rede |
 | Conversor | Ghostscript (gswin64c.exe) | Converte PostScript → PDF |
 | Configuração | Registry (`HKLM\...\Monitors\Meddrive Printer MONITOR\Ports\`) | OutputPath, OutputBaseName, OverwriteFile, GhostscriptPath por porta |
 | GUI | MedDriveManager.exe | Gerenciamento de perfis e impressoras |
@@ -59,22 +60,33 @@ O Windows Print Spooler foi projetado para que monitores de porta customizados s
 ```
 Usuário clica em Imprimir (qualquer app Win32)
         ↓
-Windows Print Spooler
+Windows Print Spooler  [SYSTEM — sessão 0]
         ↓
 Driver PSCRIPT5 (Meddrive Printer DRIVER)
 converte o documento em PostScript
         ↓
 meddrivemon.dll — WritePort()
-acumula os bytes PS em arquivo temporário (.ps)
+acumula os bytes PS em arquivo temporário (C:\Windows\Temp\*.tmp)
         ↓
 EndDocPort()
-resolve o nome do arquivo de saída (numeração ou sobrescrita)
-chama Ghostscript via CreateProcess():
-  gswin64c.exe -dBATCH -dNOPAUSE -sDEVICE=pdfwrite
-               -sOutputFile=saida.pdf arquivo.ps
+resolve o nome do arquivo de saída (template + numeração)
+obtém a sessão interativa via WTSGetActiveConsoleSessionId()
+conecta ao named pipe \\.\pipe\MeddrivePrinter_<sessionId>
+envia PrintJobMsg { tempPsPath, outputPdfPath, gsPath }
+aguarda PrintJobResponse { exitCode }
         ↓
-PDF salvo na pasta configurada
-arquivo .ps temporário removido
+MeddrivePrinterAgent.exe  [usuário logado — sessão 1]
+recebe o job pelo pipe
+executa: gswin64c.exe -dBATCH -dNOPAUSE -sDEVICE=pdfwrite
+                      -sOutputFile=saida.pdf arquivo.tmp
+aguarda o GS terminar e envia o exitCode de volta
+        ↓
+meddrivemon.dll
+recebe exitCode — se erro: mostra mensagem ao usuário (WTSSendMessage)
+se OpenAfterGenerate: ShellExecuteW para abrir o PDF
+deleta o arquivo .tmp temporário
+        ↓
+PDF salvo na pasta configurada (pode ser pasta de rede \\servidor\pasta)
 ```
 
 ---
@@ -145,10 +157,14 @@ Perfil: "Triton"  →  Porta: "Meddrive Printer PORT Triton"
 | Porta | `Meddrive Printer PORT <nome>` | `HKLM\...\Print\Monitors\...\Ports\` |
 | Driver | `Meddrive Printer DRIVER` | `HKLM\...\Print\Environments\Windows x64\Drivers\Version-3\` |
 | PPD | `MEDDRIVE.PPD` | `C:\Windows\System32\spool\drivers\x64\3\` |
+| Agente | `MeddrivePrinterAgent.exe` | `C:\ProgramData\Meddrive Printer\` |
+| Tarefa | `MeddrivePrinterAgent` | Agendador de Tarefas do Windows (Task Scheduler) |
+| Pipe do agente | `\\.\pipe\MeddrivePrinter_<sessionId>` | — (IPC local) |
 | GUI | `MedDriveManager.exe` | `C:\ProgramData\Meddrive Printer\` |
 | Scripts | `conf\*.ps1` | `C:\ProgramData\Meddrive Printer\conf\` |
 | Log da DLL | `meddrivemon_init.log` | `C:\Windows\Temp\` |
-| Log do instalador | `meddrive_install.log` | `C:\Windows\Temp\` |
+| Log do agente | `meddrive_agent.log` | `C:\Windows\Temp\` |
+| Log do instalador | `meddrive_ps_install.log` | `C:\Windows\Temp\` |
 
 ---
 
@@ -190,11 +206,25 @@ As máquinas alvo são de terceiros — não há controle sobre configurações 
 
 O Win7 não possui o módulo `PrintManagement` do PowerShell. Para registrar o driver, foi criado um helper nativo em C (`install_helper.c`) que usa `AddPrinterDriverExW` diretamente, sem depender de cmdlets PS. O NSIS do instalador Win7 extrai e executa esse helper como etapa de instalação.
 
-### 6.9 Scripts em conf/
+### 6.9 Arquitetura do MeddrivePrinterAgent (a partir da v2.8)
+
+O Spooler roda como `SYSTEM` na sessão 0 — sem credenciais de rede do usuário logado. Para salvar PDFs em pastas de rede (`\\servidor\pasta`), o Ghostscript precisa rodar com as credenciais do usuário.
+
+**Solução: agente de sessão de usuário via named pipe.**
+
+- O `MeddrivePrinterAgent.exe` é registrado no Task Scheduler com `TASK_TRIGGER_LOGON` e `TASK_LOGON_INTERACTIVE_TOKEN` — inicia automaticamente na sessão interativa de qualquer usuário que faça login.
+- O agente cria um named pipe `\\.\pipe\MeddrivePrinter_<SessionId>` com NULL DACL (acesso total local — necessário para que o SYSTEM do Spooler consiga conectar).
+- A DLL localiza a sessão interativa com `WTSGetActiveConsoleSessionId()` e conecta ao pipe correspondente. Se o agente não estiver rodando, exibe uma mensagem de erro via `WTSSendMessage` na sessão do usuário e cancela o job.
+- A comunicação é síncrona: a DLL envia `PrintJobMsg` (paths do PS temporário, PDF de saída e gswin64c.exe), aguarda `PrintJobResponse` (exitCode + mensagem de erro), fecha a conexão.
+- O agente executa o Ghostscript via `CreateProcessW` e devolve o resultado. A pasta de rede é acessível porque o processo roda com o token do usuário.
+
+**Limitação atual:** suporte ao agente implementado apenas para Win10/11. Win7/Vista instalam sem o agente e só funcionam com pastas locais.
+
+### 6.10 Scripts em conf/
 
 Todos os scripts de gerenciamento de runtime (`add-printer.ps1`, `remove-printer.ps1`, etc.) são instalados em `C:\ProgramData\Meddrive Printer\conf\`. O `MedDriveManager.exe` constrói o caminho completo em runtime com `GetModuleFileNameW` + `conf\<script>.ps1`, garantindo que funcione de qualquer diretório.
 
-### 6.10 Limitação aceita: Edge Ctrl+P não mostra preview
+### 6.11 Limitação aceita: Edge Ctrl+P não mostra preview
 
 O diálogo nativo do Edge usa a Print Ticket API (XPS) e chama `PTGetPrintCapabilities` antes de mostrar o preview. Para o nosso driver, essa chamada retorna `E_FAIL (0x80004005)`.
 
@@ -221,8 +251,11 @@ O diálogo nativo do Edge usa a Print Ticket API (XPS) e chama `PTGetPrintCapabi
 med-driver/
 ├── src/
 │   ├── monitor.c          — implementação do port monitor (MONITOR2)
-│   ├── monitor.h          — defines: MONITOR_NAME, PORT_NAME, PORT_CONTEXT
+│   ├── monitor.h          — defines: MONITOR_NAME, PORT_CONTEXT
 │   └── monitor.def        — exports da DLL
+├── agent/
+│   ├── MeddrivePrinterAgent.c   — agente de sessão de usuário (pipe + GS)
+│   └── MeddrivePrinterAgent.exe — binário compilado
 ├── gui-native/
 │   └── MedDriveManager/
 │       ├── src/
@@ -241,6 +274,8 @@ med-driver/
 │           ├── app.rc             — recursos Win32 (dialogs, ícones)
 │           └── resource.h         — IDs de controles e recursos
 ├── installer/
+│   ├── agent/
+│   │   └── register-agent.ps1   — registra o agente no Task Scheduler (COM, Vista+)
 │   ├── win10-11/
 │   │   ├── setup.nsi              — script NSIS Win10/11
 │   │   └── conf/                  — scripts de gerenciamento (instalados em ProgramData)
@@ -251,23 +286,26 @@ med-driver/
 │   │       ├── edit-profile.ps1
 │   │       ├── remove-profile.ps1
 │   │       └── edit-printer.ps1
-│   └── win7/
-│       ├── setup.nsi              — script NSIS Win7
-│       ├── install_helper.c       — helper nativo C para registro do driver
-│       ├── install_helper.exe     — binário compilado do helper
-│       └── conf/                  — mesmos scripts PS (compatíveis com PS 2.0)
+│   ├── win7/
+│   │   ├── setup.nsi              — script NSIS Win7
+│   │   ├── install_helper.c       — helper nativo C para registro do driver
+│   │   ├── install_helper.exe     — binário compilado do helper
+│   │   └── conf/                  — mesmos scripts PS (compatíveis com PS 2.0)
+│   └── vista/
+│       └── setup.nsi              — script NSIS Vista SP2
 ├── tests/
 │   ├── diagnostico.ps1            — verifica DLL, registry, spooler, driver, impressora
 │   └── test-ptcap.ps1             — testa PTGetPrintCapabilities
 ├── docs/
 │   ├── impressora_virtual_documentacao.md  — este arquivo
 │   ├── win7-particularidades.md            — detalhes do suporte Win7
-│   ├── Meddrive_UI_Refatoracao.md          — spec visual do MedDriveManager
+│   ├── winvista-particularidades.md        — detalhes do suporte Vista
 │   └── ui_refactoring_decisions.md         — decisões arquiteturais da UI
-├── build.sh                       — script de build (DLL + GUI + instaladores)
-├── meddrivemon.dll                 — DLL compilada (artefato de release)
-├── MeddrivePrinter-Setup.exe       — instalador Win10/11
-└── MeddrivePrinter-Win7-Setup.exe  — instalador Win7
+├── build.sh                            — script de build (DLL + agente + GUI + instaladores)
+├── meddrivemon.dll                     — DLL compilada (artefato de release)
+├── MeddrivePrinter-Setup.exe           — instalador Win10/11
+├── MeddrivePrinter-Win7-Setup.exe      — instalador Win7
+└── MeddrivePrinter-Vista-Setup.exe     — instalador Vista SP2
 ```
 
 ---
@@ -290,9 +328,11 @@ bash build.sh
 
 Gera:
 - `meddrivemon.dll` — DLL cross-compilada (x86_64-w64-mingw32-gcc)
+- `agent/MeddrivePrinterAgent.exe` — agente de sessão
 - `installer/win10-11/x64/Debug/MedDriveManager.exe` — GUI
 - `MeddrivePrinter-Setup.exe` — instalador Win10/11
 - `MeddrivePrinter-Win7-Setup.exe` — instalador Win7
+- `MeddrivePrinter-Vista-Setup.exe` — instalador Vista SP2
 
 A DLL é linkada com `-static-libgcc` para não depender da runtime GCC no Windows.
 
@@ -300,7 +340,7 @@ A DLL é linkada com `-static-libgcc` para não depender da runtime GCC no Windo
 
 ## 10. Fluxo de instalação
 
-### Win10/11 — via install.ps1
+### Win10/11 — via install.ps1 + register-agent.ps1
 
 1. Para o Spooler (`Stop-Service Spooler -Force`)
 2. Copia `meddrivemon.dll` → `C:\Windows\System32\`
@@ -309,8 +349,8 @@ A DLL é linkada com `-static-libgcc` para não depender da runtime GCC no Windo
 5. Registra o driver `Meddrive Printer DRIVER` via registry (PSCRIPT5)
 6. Copia `MEDDRIVE.PPD` → `drivers\x64\3\`
 7. Reinicia o Spooler para enumerar o driver
-8. Copia `MedDriveManager.exe` e scripts `conf\` → `C:\ProgramData\Meddrive Printer\`
-9. Cria atalho no menu Iniciar
+8. Copia `MedDriveManager.exe`, `MeddrivePrinterAgent.exe` e scripts `conf\` → `C:\ProgramData\Meddrive Printer\`
+9. Registra a tarefa `MeddrivePrinterAgent` no Task Scheduler via `register-agent.ps1` (COM, trigger=logon)
 
 ### Win7 — via install.ps1 + install_helper.exe
 
@@ -343,6 +383,19 @@ Verifica: DLL, registry do monitor, driver, PPD, spooler, impressora.
 
 ```powershell
 Get-Printer | Where-Object { $_.PortName -like "Meddrive*" } | Select-Object Name, DriverName, PortName
+```
+
+### Verificar agente
+
+```powershell
+# Estado da tarefa agendada
+Get-ScheduledTask -TaskName MeddrivePrinterAgent | Select-Object TaskName, State
+
+# Processo em execução
+Get-Process MeddrivePrinterAgent -ErrorAction SilentlyContinue
+
+# Log do agente
+Get-Content C:\Windows\Temp\meddrive_agent.log
 ```
 
 ---
