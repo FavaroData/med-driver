@@ -2,8 +2,8 @@
 set -e
 
 PROJ_ROOT="$(cd "$(dirname "$0")" && pwd)"
-SRC="$PROJ_ROOT/gui-native/MedDriveManager/src"
-RES="$PROJ_ROOT/gui-native/MedDriveManager/res"
+SRC="$PROJ_ROOT/src/gui-native/MedDriveManager/src"
+RES="$PROJ_ROOT/src/gui-native/MedDriveManager/res"
 OUT="$PROJ_ROOT/installer/win10-11/x64/Debug"
 MINGW="x86_64-w64-mingw32"
 MINGW_INC="/usr/x86_64-w64-mingw32/sys-root/mingw/include"
@@ -53,10 +53,10 @@ echo "  -> $OUT/MedDriveManager.exe"
 
 echo "=== Compilando MeddrivePrinterAgent.exe ==="
 $MINGW-gcc -mwindows -DUNICODE -D_UNICODE -DWINVER=0x0600 -D_WIN32_WINNT=0x0600 \
-    "$PROJ_ROOT/agent/MeddrivePrinterAgent.c" \
+    "$PROJ_ROOT/src/agent/MeddrivePrinterAgent.c" \
     -ladvapi32 \
-    -o "$PROJ_ROOT/agent/MeddrivePrinterAgent.exe"
-echo "  -> $PROJ_ROOT/agent/MeddrivePrinterAgent.exe"
+    -o "$PROJ_ROOT/src/agent/MeddrivePrinterAgent.exe"
+echo "  -> $PROJ_ROOT/src/agent/MeddrivePrinterAgent.exe"
 
 echo "=== Compilando instalador NSIS (Win10/11) ==="
 cd "$PROJ_ROOT/installer/win10-11"
