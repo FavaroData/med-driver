@@ -55,7 +55,7 @@ Todas as configurações (caminho de saída, nome de arquivo, estratégia de con
 4. O monitor acumula os bytes PostScript em um arquivo temporário em `C:\Windows\Temp\`.
 5. Ao finalizar o job (`EndDocPort`), o monitor resolve o nome de saída (template + numeração) e localiza a sessão interativa via `WTSGetActiveConsoleSessionId()`.
 6. O monitor conecta ao named pipe `\\.\pipe\MeddrivePrinter_<sessionId>` e envia uma struct `PrintJobMsg` contendo: caminho do arquivo `.tmp` (PostScript), caminho do PDF de saída (já resolvido) e caminho do `gswin64c.exe`.
-7. O `MeddrivePrinterAgent` (rodando na sessão do usuário, com credenciais de rede) recebe o job, chama `CreateProcessW` para executar o Ghostscript e aguarda a conclusão. O PDF é salvo no caminho de saída — inclusive pastas de rede (`\\servidor\pasta`).
+7. O `MeddrivePrinterAgent` (rodando na sessão do usuário, com credenciais de acesso do mesmo) recebe o job, chama `CreateProcessW` para executar o Ghostscript e aguarda a conclusão. O PDF é salvo no caminho de saída.
 8. O agente devolve uma struct `PrintJobResponse` com o `exitCode` pelo mesmo pipe.
 9. O monitor recebe o `exitCode`, deleta o arquivo `.tmp` e, se `OpenAfterGenerate` estiver ativo, abre o PDF no visualizador padrão via `ShellExecuteW`.
 10. Se o agente não estiver rodando, o monitor exibe uma mensagem de erro na sessão do usuário via `WTSSendMessage` e cancela o job.
