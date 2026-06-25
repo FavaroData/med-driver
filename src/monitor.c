@@ -566,6 +566,9 @@ static BOOL WINAPI Monitor_StartDocPort(
         LogDebug("StartDocPort: docName = %ls\n", ctx->docName);
     }
 
+    ctx->jobId = JobId;
+    wcsncpy_s(ctx->printerName, 256, pPrinterName ? pPrinterName : L"", _TRUNCATE);
+
     return ok;
 }
 
@@ -617,26 +620,49 @@ static BOOL WINAPI Monitor_ReadPort(
 
 // função chamada pelo spooler quando o job de impressão é finalizado
 // fecha o arquivo temporário onde o conteúdo PostScript foi armazenado
-// chama a função de conversão do arquivo ConvertPsToPdf na qual usa o Ghostscript
-// deleta o arquivo temporário
+typedef struct {
+    WCHAR printerName[256];
+    DWORD jobId;
+} DeleteJobCtx;
+
+static DWORD WINAPI delete_job_thread(LPVOID param) {
+    DeleteJobCtx *j = (DeleteJobCtx *)param;
+    HANDLE hPrinter = NULL;
+    if (OpenPrinterW(j->printerName, &hPrinter, NULL)) {
+        SetJobW(hPrinter, j->jobId, 0, NULL, JOB_CONTROL_DELETE);
+        ClosePrinter(hPrinter);
+        LogDebug("delete_job: job %lu removido da fila\n", j->jobId);
+    }
+    HeapFree(GetProcessHeap(), 0, j);
+    return 0;
+}
+
 static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
-    // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
-    BOOL          ok;
- 
-    // fecha o arquivo temporário onde o conteúdo PostScript foi armazenado
-    // a fim de liberar o handle para o processo do Ghostscript ler o arquivo e convertê-lo para PDF
+    BOOL ok;
+
     CloseHandle(ctx->hTempFile);
     ctx->hTempFile = INVALID_HANDLE_VALUE;
     LogDebug("EndDocPort: arquivo=%ls\n", ctx->tempPsFile);
- 
-    // delega conversão PS→PDF ao MeddrivePrinterAgent (roda com credenciais do usuário)
-    LogDebug("EndDocPort: chamando agente\n");
+
     ok = CallAgentForConversion(ctx);
-    LogDebug("EndDocPort: CallAgentForConversion=%s\n", ok ? "OK" : "FALHOU");
-    // deleta o arquivo temporário
-    // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
+    LogDebug("EndDocPort: agente=%s\n", ok ? "OK" : "FALHOU");
     DeleteFileW(ctx->tempPsFile);
+
+    if (ok)
+        ok = (GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES);
+    LogDebug("EndDocPort: PDF=%s path=%ls\n", ok ? "OK" : "NAO ENCONTRADO", ctx->resolvedPath);
+
+    if (ok) {
+        DeleteJobCtx *j = HeapAlloc(GetProcessHeap(), 0, sizeof(DeleteJobCtx));
+        if (j) {
+            wcsncpy_s(j->printerName, 256, ctx->printerName, _TRUNCATE);
+            j->jobId = ctx->jobId;
+            HANDLE t = CreateThread(NULL, 0, delete_job_thread, j, 0, NULL);
+            if (t) CloseHandle(t);
+            else HeapFree(GetProcessHeap(), 0, j);
+        }
+    }
 
     return ok;
 }

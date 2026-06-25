@@ -22,7 +22,9 @@ typedef struct {
     HANDLE hTempFile;
     DWORD  openAfterGenerate;          // registry: OpenAfterGenerate
     DWORD  overwriteFile;              // registry: OverwriteFile — usa counter=1 sem escanear pasta
-    WCHAR  portName[256];             // nome da porta, salvo no OpenPort para re-leitura por job
+    WCHAR  portName[256];              // nome da porta, salvo no OpenPort para re-leitura por job
+    DWORD  jobId;                      // ID do job atual, salvo no StartDocPort
+    WCHAR  printerName[256];           // nome da impressora, salvo no StartDocPort
 } PORT_CONTEXT;
 
 // InitializePrintMonitor2 declarada pelo winsplp.h
