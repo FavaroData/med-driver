@@ -19,7 +19,7 @@
 #include <stdarg.h>
 
 #define PIPE_PREFIX L"\\\\.\\pipe\\MeddrivePrinter_"
-#define LOG_PATH    L"C:\\Windows\\Temp\\meddrive_agent.log"
+#define LOG_PATH    L"C:\\Windows\\Temp\\meddrive_printer.log"
 
 typedef struct {
     WCHAR psTempPath[MAX_PATH];    // arquivo PS temporario gerado pelo Spooler
@@ -251,8 +251,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
             CloseHandle(hPipe);
             continue;
         }
-        Log("[agent] job: ps=%ls out=%ls template=%ls choosePath=%lu\n",
-            msg.psTempPath, msg.outputPath, msg.outputBaseName, msg.choosePath);
+        Log("[agent] [JOB] \"%ls\" -> %ls | template: %ls\n",
+            msg.docName, msg.outputPath, msg.outputBaseName);
 
         PrintJobResponse resp = {0};
 
@@ -274,7 +274,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
             ofn.Flags       = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
 
             if (!GetSaveFileNameW(&ofn)) {
-                Log("[agent] usuario cancelou o dialogo\n");
+                Log("[agent] [CANCELADO] usuario encerrou o dialogo\n");
                 resp.userCancelled = 1;
                 DWORD w = 0;
                 WriteFile(hPipe, &resp, sizeof(resp), &w, NULL);
@@ -294,14 +294,14 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
         STARTUPINFOW si = {0};
         si.cb = sizeof(si);
         PROCESS_INFORMATION pi = {0};
-        Log("[agent] executando GS...\n");
+        Log("[agent] [GS] convertendo para PDF...\n");
 
         if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
                             CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
             resp.exitCode = GetLastError();
             _snwprintf(resp.errorMsg, 512,
                 L"CreateProcess falhou: %lu", resp.exitCode);
-            Log("[agent] CreateProcess falhou: %lu\n", resp.exitCode);
+            Log("[agent] [FALHOU] CreateProcess falhou: %lu\n", resp.exitCode);
         } else {
             WaitForSingleObject(pi.hProcess, INFINITE);
             GetExitCodeProcess(pi.hProcess, &resp.exitCode);
@@ -313,17 +313,18 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
                     resp.exitCode = 1;
                     _snwprintf(resp.errorMsg, 512,
                         L"PDF nao encontrado apos conversao: %ls", resolvedPath);
-                    Log("[agent] PDF nao encontrado: %ls\n", resolvedPath);
+                    Log("[agent] [FALHOU] PDF nao encontrado apos conversao: %ls\n", resolvedPath);
                 } else {
-                    Log("[agent] PDF confirmado: %ls\n", resolvedPath);
+                    Log("[agent] [PDF] %ls\n", resolvedPath);
+                    Log("[agent] [OK] job concluido\n");
                     if (msg.openAfterGenerate)
                         ShellExecuteW(NULL, L"open", resolvedPath, NULL, NULL, SW_SHOWNORMAL);
                 }
             } else {
                 _snwprintf(resp.errorMsg, 512,
                     L"Ghostscript falhou: codigo %lu", resp.exitCode);
+                Log("[agent] [FALHOU] Ghostscript retornou codigo %lu\n", resp.exitCode);
             }
-            Log("[agent] GS exitCode=%lu\n", resp.exitCode);
         }
 
         wcsncpy_s(resp.outputPath, MAX_PATH, resolvedPath, _TRUNCATE);

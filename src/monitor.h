@@ -26,6 +26,7 @@ typedef struct {
     WCHAR  portName[256];              // nome da porta, salvo no OpenPort para re-leitura por job
     DWORD  jobId;                      // ID do job atual, salvo no StartDocPort
     WCHAR  printerName[256];           // nome da impressora, salvo no StartDocPort
+    DWORD  totalBytesWritten;          // acumulador de bytes recebidos via WritePort
 } PORT_CONTEXT;
 
 // InitializePrintMonitor2 declarada pelo winsplp.h

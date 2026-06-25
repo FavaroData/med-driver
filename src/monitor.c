@@ -12,7 +12,7 @@ static MONITOR2    g_monitor2 = {0};
 // abre, escreve e fecha o arquivo a cada chamada para garantir que nada se perca em caso de crash
 // temporária — será removida quando o problema de carregamento do monitor for resolvido
 static void LogDebug(const char *fmt, ...) {
-    HANDLE hLog = CreateFileW(L"C:\\Windows\\Temp\\meddrivemon_init.log",
+    HANDLE hLog = CreateFileW(L"C:\\Windows\\Temp\\meddrive_printer.log",
         FILE_APPEND_DATA, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hLog == INVALID_HANDLE_VALUE) return;
     char  buf[512];
@@ -204,7 +204,7 @@ static BOOL WINAPI Monitor_EnumPorts(
     LPDWORD pcbNeeded,    // buffer para armazenar quantos bytes precisamos
     LPDWORD pcReturned)   // buffer para armazenar quantas portas retornamos
 {
-    LogDebug("EnumPorts: Level=%lu cbBuf=%lu\n", Level, cbBuf);
+    LogDebug("[inicio] EnumPorts Level=%lu cbBuf=%lu\n", Level, cbBuf);
 
     static const WCHAR PORT_DESC[] = L"Impressora Virtual PDF";
 
@@ -217,7 +217,7 @@ static BOOL WINAPI Monitor_EnumPorts(
     HKEY hPortsKey;
     LONG rc = RegOpenKeyExW(g_hkRoot, L"Ports", 0, KEY_READ, &hPortsKey);
     if (rc != ERROR_SUCCESS) {
-        LogDebug("EnumPorts: chave Ports\\ nao encontrada rc=%ld\n", rc);
+        LogDebug("[meio] EnumPorts ERRO chave Ports rc=%ld\n", rc);
         *pcbNeeded  = 0;
         *pcReturned = 0;
         return TRUE;
@@ -250,9 +250,11 @@ static BOOL WINAPI Monitor_EnumPorts(
     *pcbNeeded  = needed;
     *pcReturned = 0;
 
+    LogDebug("[meio] EnumPorts %lu porta(s) | needed=%lu bytes\n", portCount, needed);
+
     if (cbBuf < needed) {
         RegCloseKey(hPortsKey);
-        LogDebug("EnumPorts: buffer insuficiente (needed=%lu cbBuf=%lu)\n", needed, cbBuf);
+        LogDebug("[meio] EnumPorts ERRO buffer insuficiente needed=%lu cbBuf=%lu\n", needed, cbBuf);
         SetLastError(ERROR_INSUFFICIENT_BUFFER);
         return FALSE;
     }
@@ -291,12 +293,11 @@ static BOOL WINAPI Monitor_EnumPorts(
             pInfo->fPortType = PORT_TYPE_WRITE;
             pInfo->Reserved  = 0;
         }
-        LogDebug("EnumPorts: porta[%lu]='%ls'\n", filled, portName);
         filled++;
     }
 
     RegCloseKey(hPortsKey);
-    LogDebug("EnumPorts: retornando %lu porta(s) (Level=%lu)\n", portCount, Level);
+    LogDebug("[fim] EnumPorts OK %lu porta(s) Level=%lu\n", portCount, Level);
     *pcReturned = portCount;
     return TRUE;
 }
@@ -398,8 +399,18 @@ static BOOL WINAPI Monitor_StartDocPort(
         LogDebug("StartDocPort: docName = %ls\n", ctx->docName);
     }
 
-    ctx->jobId = JobId;
+    ctx->jobId             = JobId;
+    ctx->totalBytesWritten = 0;
     wcsncpy_s(ctx->printerName, 256, pPrinterName ? pPrinterName : L"", _TRUNCATE);
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    LogDebug("[JOB] #%lu | \"%ls\" | %ls | destino: %ls | %04u-%02u-%02u %02u:%02u:%02u\n",
+        JobId, ctx->docName, ctx->printerName, ctx->outputPath,
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+
+    if (ok)
+        LogDebug("[inicio] WritePort aguardando dados do Spooler\n");
 
     return ok;
 }
@@ -415,26 +426,11 @@ static BOOL WINAPI Monitor_WritePort(
 {
     // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
-    LogDebug("WritePort: hPort=%p cbBuf=%lu\n", (void*)hPort, cbBuf);
-    // escreve os bytes PostScript recebidos do spooler
-    // caso haja falha na escrita, retorna FALSE e mostra o erro no output debug do Windows
-    // No WritePort, antes do WriteFile, adiciona temporariamente:
-    LogDebug("WritePort: primeiros bytes = %02X %02X %02X %02X %02X %02X %02X %02X\n",
-        cbBuf > 0 ? pBuffer[0] : 0,
-        cbBuf > 1 ? pBuffer[1] : 0,
-        cbBuf > 2 ? pBuffer[2] : 0,
-        cbBuf > 3 ? pBuffer[3] : 0,
-        cbBuf > 4 ? pBuffer[4] : 0,
-        cbBuf > 5 ? pBuffer[5] : 0,
-        cbBuf > 6 ? pBuffer[6] : 0,
-        cbBuf > 7 ? pBuffer[7] : 0);
     if (!WriteFile(ctx->hTempFile, pBuffer, cbBuf, pcbWritten, NULL)) {
-        DWORD err = GetLastError();
-        WCHAR msg[128];
-        _snwprintf(msg, 128, L"[meddrivemon] WriteFile falhou. Erro: %lu\n", err);
-        OutputDebugStringW(msg);
+        LogDebug("[meio] WritePort ERRO WriteFile err=%lu\n", GetLastError());
         return FALSE;
     }
+    ctx->totalBytesWritten += *pcbWritten;
     return TRUE;
 }
 
@@ -463,7 +459,7 @@ static DWORD WINAPI delete_job_thread(LPVOID param) {
     if (OpenPrinterW(j->printerName, &hPrinter, NULL)) {
         SetJobW(hPrinter, j->jobId, 0, NULL, JOB_CONTROL_DELETE);
         ClosePrinter(hPrinter);
-        LogDebug("delete_job: job %lu removido da fila\n", j->jobId);
+        LogDebug("[OK] job #%lu entregue\n", j->jobId);
     }
     HeapFree(GetProcessHeap(), 0, j);
     return 0;
@@ -474,12 +470,21 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
 
     CloseHandle(ctx->hTempFile);
     ctx->hTempFile = INVALID_HANDLE_VALUE;
+    LogDebug("[fim] WritePort %lu bytes recebidos\n", ctx->totalBytesWritten);
     LogDebug("EndDocPort: arquivo=%ls\n", ctx->tempPsFile);
 
+    LogDebug("[CONV] chamando agente...\n");
     BOOL cancelled = FALSE;
     BOOL ok = CallAgentForConversion(ctx, &cancelled);
     LogDebug("EndDocPort: agente=%s cancelled=%d\n", ok ? "OK" : "FALHOU", cancelled);
     DeleteFileW(ctx->tempPsFile);
+
+    if (cancelled)
+        LogDebug("[CANCELADO] usuario encerrou o dialogo\n");
+    else if (ok)
+        LogDebug("[PDF] %ls\n", ctx->resolvedPath);
+    else
+        LogDebug("[FALHOU] agente retornou erro\n");
 
     // o agente ja verificou o PDF do lado dele (com credenciais do usuario);
     // o monitor so precisa saber se deu certo ou nao
