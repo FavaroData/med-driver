@@ -1,7 +1,6 @@
 #include "monitor.h"
 #include <stdio.h>
 #include <stdarg.h>
-#include <shellapi.h>
 #include <wtsapi32.h>
 
 static HKEY        g_hkRoot   = NULL;
@@ -285,6 +284,7 @@ typedef struct {
     WCHAR psTempPath[MAX_PATH];
     WCHAR outputPath[MAX_PATH];
     WCHAR gsPath[MAX_PATH];
+    DWORD openAfterGenerate;
 } PrintJobMsg;
 
 typedef struct {
@@ -342,6 +342,7 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
     wcscpy_s(msg.psTempPath, MAX_PATH, ctx->tempPsFile);
     wcscpy_s(msg.outputPath, MAX_PATH, ctx->resolvedPath);
     wcscpy_s(msg.gsPath,     MAX_PATH, ctx->ghostscriptPath);
+    msg.openAfterGenerate = ctx->openAfterGenerate;
     DWORD written = 0;
     WriteFile(hPipe, &msg, sizeof(msg), &written, NULL);
     LogDebug("CallAgent: msg enviada (%lu bytes)\n", written);
@@ -504,6 +505,8 @@ static BOOL WINAPI Monitor_OpenPort(HANDLE hMonitor, LPWSTR pName, PHANDLE pHand
         return FALSE;
     }
 
+    wcsncpy_s(ctx->portName, 256, pName, _TRUNCATE);
+
     // retorna o handle para as outras funções do monitor
     // que vai apontar para a variável com as informações do job de impressão
     *pHandle = (HANDLE)ctx;
@@ -523,7 +526,21 @@ static BOOL WINAPI Monitor_StartDocPort(
     // cast do handle para acessar as informações do job de impressão
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
     WCHAR         tempDir[MAX_PATH];
- 
+
+    // re-lê configurações voláteis do registry a cada job (o OpenPort é chamado uma vez e o ctx fica cacheado)
+    {
+        WCHAR keyPath[512];
+        swprintf(keyPath, 512, L"Ports\\%ls", ctx->portName);
+        HKEY hKey;
+        if (RegOpenKeyExW(g_hkRoot, keyPath, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            DWORD sz = sizeof(DWORD);
+            RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &sz);
+            sz = sizeof(DWORD);
+            RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &sz);
+            RegCloseKey(hKey);
+        }
+    }
+
     // cria o arquivo temporário para armazenar o conteúdo enviado pelo spooler
     GetTempPathW(MAX_PATH, tempDir);
     GetTempFileNameW(tempDir, L"pdfmon", 0, ctx->tempPsFile);
@@ -620,12 +637,6 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     // deleta o arquivo temporário
     // mesmo que a conversão falhe, o arquivo é deletado, para não deixar lixo no sistema
     DeleteFileW(ctx->tempPsFile);
-
-    // abre o PDF no visualizador padrão se solicitado e a conversão foi bem-sucedida
-    if (ok && ctx->openAfterGenerate) {
-        LogDebug("EndDocPort: abrindo PDF '%ls'\n", ctx->resolvedPath);
-        ShellExecuteW(NULL, L"open", ctx->resolvedPath, NULL, NULL, SW_SHOWNORMAL);
-    }
 
     return ok;
 }

@@ -724,7 +724,7 @@ static void on_create(HWND hwnd) {
                                           CONTENT_PAD + (BTN_W + 6) * 3, PROF_BTN_Y, BTN_W, BTN_H);
 
     /* ── ListView de impressoras (tab 1, começa oculto) ─────────────── */
-    int lvY = TITLEBAR_H + NAVBAR_H + SUBTITLE_H;
+    int lvY = TITLEBAR_H + NAVBAR_H + SUBTITLE_H + 5;
     int lvH = WIN_H - lvY - BTNBAR_H - STATUSBAR_H - CONTENT_PAD;
     g_hwndList = listview_create(hwnd, hInst, lvX, lvY, lvW, lvH);
 

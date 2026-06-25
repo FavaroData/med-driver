@@ -5,7 +5,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PortName = "Meddrive Printer PORT $ProfileName"
+$PortName   = "Meddrive Printer PORT $ProfileName"
+$MonitorReg = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR"
+$PortReg    = "$MonitorReg\Ports\$PortName"
 
 $printer = Get-Printer -Name $OldPrinterName -ErrorAction SilentlyContinue
 if (-not $printer) {
@@ -13,8 +15,7 @@ if (-not $printer) {
     exit 1
 }
 
-$port = Get-PrinterPort -Name $PortName -ErrorAction SilentlyContinue
-if (-not $port) {
+if (-not (Test-Path $PortReg)) {
     Write-Output "[ERRO] Porta '$PortName' nao encontrada. Verifique se o perfil existe."
     exit 1
 }

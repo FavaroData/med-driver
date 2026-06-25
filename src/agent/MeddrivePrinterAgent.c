@@ -13,6 +13,7 @@
 #define _WIN32_WINNT 0x0600
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shellapi.h>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -23,6 +24,7 @@ typedef struct {
     WCHAR psTempPath[MAX_PATH];
     WCHAR outputPath[MAX_PATH];
     WCHAR gsPath[MAX_PATH];
+    DWORD openAfterGenerate;
 } PrintJobMsg;
 
 typedef struct {
@@ -124,6 +126,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
                 _snwprintf(resp.errorMsg, 512,
                     L"Ghostscript falhou: codigo %lu", resp.exitCode);
             Log("[agent] GS exitCode=%lu\n", resp.exitCode);
+            if (resp.exitCode == 0 && msg.openAfterGenerate)
+                ShellExecuteW(NULL, L"open", msg.outputPath, NULL, NULL, SW_SHOWNORMAL);
         }
 
         DWORD bytesWritten = 0;
