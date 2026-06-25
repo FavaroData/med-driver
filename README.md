@@ -1,4 +1,4 @@
-# Meddrive Printer v2.8
+# Meddrive Printer v3.4
 > Desenvolvido para a empresa **StachIt**.
 
 Impressora virtual PDF para Windows que captura jobs de impressão e os converte automaticamente em arquivos PDF, salvando-os em uma pasta configurável.
@@ -53,11 +53,11 @@ Todas as configurações (caminho de saída, nome de arquivo, estratégia de con
 2. O Spooler consulta as portas disponíveis — o monitor lê as subchaves de `Ports\` no registry.
 3. Ao receber um job, o Spooler chama `OpenPort`. O monitor aloca um `PORT_CONTEXT` e lê as configurações do registry.
 4. O monitor acumula os bytes PostScript em um arquivo temporário em `C:\Windows\Temp\`.
-5. Ao finalizar o job (`EndDocPort`), o monitor resolve o nome de saída (template + numeração) e localiza a sessão interativa via `WTSGetActiveConsoleSessionId()`.
-6. O monitor conecta ao named pipe `\\.\pipe\MeddrivePrinter_<sessionId>` e envia uma struct `PrintJobMsg` contendo: caminho do arquivo `.tmp` (PostScript), caminho do PDF de saída (já resolvido) e caminho do `gswin64c.exe`.
-7. O `MeddrivePrinterAgent` (rodando na sessão do usuário, com credenciais de acesso do mesmo) recebe o job, chama `CreateProcessW` para executar o Ghostscript e aguarda a conclusão. O PDF é salvo no caminho de saída.
-8. O agente devolve uma struct `PrintJobResponse` com o `exitCode` pelo mesmo pipe.
-9. O monitor recebe o `exitCode`, deleta o arquivo `.tmp` e, se `OpenAfterGenerate` estiver ativo, abre o PDF no visualizador padrão via `ShellExecuteW`.
+5. Ao finalizar o job (`EndDocPort`), o monitor localiza a sessão interativa via `WTSGetActiveConsoleSessionId()` e conecta ao named pipe `\\.\pipe\MeddrivePrinter_<sessionId>`.
+6. O monitor envia uma struct `PrintJobMsg` com os ingredientes brutos: caminho do `.tmp` (PostScript), pasta de destino, template de nome (`OutputBaseName`), nome do documento e caminho do `gswin64c.exe`.
+7. O `MeddrivePrinterAgent` (rodando na sessão do usuário, com credenciais de rede do mesmo) resolve o nome final do PDF — incluindo a varredura de numeração em pastas de rede — e chama `CreateProcessW` para executar o Ghostscript. O PDF é salvo no caminho resolvido.
+8. O agente devolve uma struct `PrintJobResponse` com o `exitCode` e o caminho final do PDF pelo mesmo pipe. Se `OpenAfterGenerate` estiver ativo, o agente abre o PDF no visualizador padrão via `ShellExecuteW`.
+9. O monitor recebe a resposta, deleta o arquivo `.tmp` e remove o job da fila do Spooler.
 10. Se o agente não estiver rodando, o monitor exibe uma mensagem de erro na sessão do usuário via `WTSSendMessage` e cancela o job.
 
 ---
@@ -127,9 +127,11 @@ HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR\Po
 | Valor | Descrição | Exemplo |
 |---|---|---|
 | `OutputPath` | Pasta de destino dos PDFs | `C:\PDF\` |
-| `OutputBaseName` | Padrão do nome de arquivo | `documento_{DATE}` |
+| `OutputBaseName` | Template do nome de arquivo. Tokens: `{data}`, `{hora}`, `{documento}`, `{n}` / `{nn}` / `{nnn}` | `{documento}_{data}` |
 | `GhostscriptPath` | Caminho do executável do Ghostscript | `C:\ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe` |
-| `OverwriteFile` | `1` = sobrescrever · `0` = incrementar cópias | `0` |
+| `OverwriteFile` | `1` = sobrescrever · `0` = incrementar contador | `0` |
+| `OpenAfterGenerate` | `1` = abrir o PDF no visualizador após gerar | `0` |
+| `ChoosePath` | `1` = exibir diálogo "Salvar como" antes de converter | `0` |
 
 ---
 
