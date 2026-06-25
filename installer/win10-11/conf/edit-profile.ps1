@@ -34,7 +34,7 @@ trap {
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
-Log "=== [$(Get-Date -Format 'HH:mm:ss')] edit-profile: $ProfileName ==="
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] edit-profile ==="
 Trace-Step "inicio do script"
 
 if (-not $ProfileName) {

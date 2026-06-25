@@ -27,7 +27,7 @@ trap {
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
-Log "=== [$(Get-Date -Format 'HH:mm:ss')] add-printer: $PrinterName (perfil: $ProfileName) ==="
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] add-printer ==="
 Trace-Step "inicio do script"
 
 if (-not $ProfileName) {

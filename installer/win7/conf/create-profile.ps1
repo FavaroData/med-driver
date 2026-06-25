@@ -31,7 +31,7 @@ trap {
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
-Log "=== [$(Get-Date -Format 'HH:mm:ss')] create-profile: $ProfileName ==="
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] create-profile ==="
 Trace-Step "inicio do script"
 
 if (-not $ProfileName)    { Log "ERRO: parametro -ProfileName e obrigatorio.";    $LogWriter.Close(); exit 1 }
