@@ -23,16 +23,11 @@ trap {
     $LogWriter.Close()
     exit 1
 }
-function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
 Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] remove-printer ==="
-Trace-Step "inicio do script"
 
 $ErrorActionPreference = "Stop"
-
-Log "Impressora : $PrinterName"
-Log ""
 
 Add-Type -TypeDefinition @"
 using System;
@@ -47,34 +42,25 @@ public class Win32RemovePrinter {
 }
 "@ -ErrorAction SilentlyContinue
 
-# -- Garante Spooler em execucao -------------------------------------------
-Log "Verificando Spooler..."
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
     Start-Service -Name Spooler
     Start-Sleep -Seconds 3
 }
-Trace-Step "Spooler em execucao"
 
-# -- Remove via OpenPrinter + DeletePrinter --------------------------------
-Log "Removendo impressora '$PrinterName'..."
+Log "[INFO] Removendo impressora '$PrinterName'..."
 $hPrinter = [IntPtr]::Zero
 if ([Win32RemovePrinter]::OpenPrinter($PrinterName, [ref]$hPrinter, [IntPtr]::Zero)) {
     $ok = [Win32RemovePrinter]::DeletePrinter($hPrinter)
     [Win32RemovePrinter]::ClosePrinter($hPrinter) | Out-Null
     if ($ok) {
-        Log "  OK - impressora removida do Windows"
+        Log "[OK] Impressora '$PrinterName' removida"
     } else {
         $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        Log "  AVISO: DeletePrinter falhou (Win32 erro $err)"
+        Log "[AVISO] DeletePrinter falhou (Win32 erro $err)"
     }
 } else {
-    Log "  AVISO: impressora '$PrinterName' nao encontrada no sistema"
+    Log "[AVISO] Impressora '$PrinterName' nao encontrada no sistema"
 }
-Trace-Step "impressora removida"
-
-Log ""
-Log "Remocao concluida!"
-Log "  Impressora : $PrinterName"
 
 $LogWriter.Close()

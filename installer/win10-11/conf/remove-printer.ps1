@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 
 # Remove a impressora Meddrive do sistema.
-# O perfil (porta no registry) é preservado e pode ser reutilizado.
+# O perfil (porta no registry) e preservado e pode ser reutilizado.
 
 param(
     [string]$PrinterName = "Meddrive Printer"
@@ -25,38 +25,24 @@ trap {
     $LogWriter.Close()
     exit 1
 }
-function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
 Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] remove-printer ==="
-Trace-Step "inicio do script"
 
 $ErrorActionPreference = "Stop"
 
-Log "Impressora : $PrinterName"
-Log ""
-
-# ── Garante Spooler em execução ──────────────────────────────────────────
-Log "Verificando Spooler..."
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
     Start-Service -Name Spooler
     Start-Sleep -Seconds 3
 }
-Trace-Step "Spooler em execução"
 
-# ── Remove a impressora ───────────────────────────────────────────────────
-Log "Removendo impressora '$PrinterName'..."
+Log "[INFO] Removendo impressora '$PrinterName'..."
 if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue) {
     Remove-Printer -Name $PrinterName
-    Log "  OK - impressora removida do Windows"
+    Log "[OK] Impressora '$PrinterName' removida"
 } else {
-    Log "  AVISO: impressora '$PrinterName' não encontrada no sistema"
+    Log "[AVISO] Impressora '$PrinterName' nao encontrada no sistema"
 }
-Trace-Step "impressora removida"
-
-Log ""
-Log "Remoção concluída!"
-Log "  Impressora : $PrinterName"
 
 $LogWriter.Close()

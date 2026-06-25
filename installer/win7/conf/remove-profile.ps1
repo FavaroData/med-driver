@@ -23,14 +23,12 @@ trap {
     $LogWriter.Close()
     exit 1
 }
-function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
 Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] remove-profile ==="
-Trace-Step "inicio do script"
 
 if (-not $ProfileName) {
-    Log "ERRO: parametro -ProfileName e obrigatorio."
+    Log "[ERRO] Parametro -ProfileName e obrigatorio."
     $LogWriter.Close()
     exit 1
 }
@@ -43,26 +41,22 @@ $PortName    = "Meddrive Printer PORT $ProfileName"
 $PortReg     = "$MonitorReg\Ports\$PortName"
 
 if (-not (Test-Path $PortReg)) {
-    Log "ERRO: perfil '$ProfileName' nao encontrado no registry ($PortReg)."
+    Log "[ERRO] Perfil '$ProfileName' nao encontrado no registry ($PortReg)."
     $LogWriter.Close()
     exit 1
 }
-Trace-Step "perfil encontrado em $PortReg"
 
-# -- Spooler ---------------------------------------------------------------
-Log "Iniciando o Spooler..."
+Log "[INFO] Iniciando Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 2
 
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
-    Log "ERRO: Spooler nao esta em execucao (status: $spoolerStatus)"
+    Log "[ERRO] Spooler nao esta em execucao (status: $spoolerStatus)"
     $LogWriter.Close()
     exit 1
 }
-Trace-Step "Spooler em execucao"
 
-# -- DeletePortW via P/Invoke ----------------------------------------------
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -72,22 +66,15 @@ public class PortRemoverWin7 {
 }
 "@ -ErrorAction SilentlyContinue
 
-Log "Removendo porta '$PortName' via DeletePortW..."
+Log "[INFO] Removendo porta '$PortName'..."
 $ok = [PortRemoverWin7]::DeletePort($null, [IntPtr]::Zero, $PortName)
 if (-not $ok) {
     $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
-    Log "  AVISO: DeletePortW falhou (Win32 erro $err) -- removendo apenas do registry"
-} else {
-    Trace-Step "porta removida via DeletePortW"
+    Log "[AVISO] DeletePortW falhou (Win32 erro $err) -- removendo apenas do registry"
 }
 
-# -- Remove chave do registry ----------------------------------------------
 Remove-Item -Path $PortReg -Recurse -Force
-Trace-Step "chave do registry removida"
 
-Log ""
-Log "Perfil removido com sucesso!"
-Log "  Perfil : $ProfileName"
-Log "  Porta  : $PortName"
+Log "[OK] Perfil removido: $ProfileName"
 
 $LogWriter.Close()

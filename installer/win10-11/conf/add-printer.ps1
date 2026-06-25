@@ -26,74 +26,61 @@ trap {
     $LogWriter.Close()
     exit 1
 }
-function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
 Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] add-printer ==="
-Trace-Step "inicio do script"
 
 if (-not $ProfileName) {
-    Log "ERRO: parâmetro -ProfileName é obrigatório."
+    Log "[ERRO] Parametro -ProfileName e obrigatorio."
     $LogWriter.Close()
     exit 1
 }
 
 $ErrorActionPreference = "Stop"
 
-# ── Pré-requisitos ────────────────────────────────────────────────────────
 $DllPath = "$env:SystemRoot\System32\meddrivemon.dll"
 if (-not (Test-Path $DllPath)) {
-    Log "ERRO: meddrivemon.dll não encontrada em $DllPath. Execute o instalador principal antes de adicionar impressoras."
+    Log "[ERRO] meddrivemon.dll nao encontrada em $DllPath. Execute o instalador principal antes de adicionar impressoras."
     $LogWriter.Close()
     exit 1
 }
-Trace-Step "DLL encontrada em $DllPath"
 
 $MonitorName = "Meddrive Printer MONITOR"
 $DriverName  = "Meddrive Printer DRIVER"
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 
 if (-not (Test-Path $MonitorReg)) {
-    Log "ERRO: monitor '$MonitorName' não encontrado no registry. Execute o instalador principal antes de adicionar impressoras."
+    Log "[ERRO] Monitor '$MonitorName' nao encontrado no registry. Execute o instalador principal antes de adicionar impressoras."
     $LogWriter.Close()
     exit 1
 }
-Trace-Step "monitor encontrado no registry"
 
 if (-not (Get-PrinterDriver -Name $DriverName -ErrorAction SilentlyContinue)) {
-    Log "ERRO: driver '$DriverName' não encontrado. Execute o instalador principal antes de adicionar impressoras."
+    Log "[ERRO] Driver '$DriverName' nao encontrado. Execute o instalador principal antes de adicionar impressoras."
     $LogWriter.Close()
     exit 1
 }
-Trace-Step "driver encontrado"
 
-# ── Verifica o perfil ─────────────────────────────────────────────────────
 $PortName = "Meddrive Printer PORT $ProfileName"
 $PortReg  = "$MonitorReg\Ports\$PortName"
 
 if (-not (Test-Path $PortReg)) {
-    Log "ERRO: perfil '$ProfileName' não encontrado no registry ($PortReg). Crie o perfil com create-profile.ps1 antes de adicionar impressoras."
+    Log "[ERRO] Perfil '$ProfileName' nao encontrado no registry ($PortReg). Crie o perfil com create-profile.ps1 antes de adicionar impressoras."
     $LogWriter.Close()
     exit 1
 }
-Trace-Step "perfil encontrado em $PortReg"
 
-# ── Spooler ───────────────────────────────────────────────────────────────
-Log "Iniciando o Spooler..."
+Log "[INFO] Iniciando Spooler..."
 Start-Service -Name Spooler
-
-Log "Aguardando o Spooler carregar o monitor..."
 Start-Sleep -Seconds 5
 
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
-    Log "ERRO: Spooler não está em execução (status: $spoolerStatus)"
+    Log "[ERRO] Spooler nao esta em execucao (status: $spoolerStatus)"
     $LogWriter.Close()
     exit 1
 }
-Log "  OK - Spooler em execução"
 
-# ── Registra a impressora via AddPrinterW ─────────────────────────────────
 Add-Type -TypeDefinition "
 using System;
 using System.Runtime.InteropServices;
@@ -137,10 +124,7 @@ $pi2.pPrintProcessor = "winprint"
 $pi2.pDatatype       = "RAW"
 $pi2.Attributes      = 0x40
 
-Log "Registrando impressora via AddPrinterW..."
-Log "  pPrinterName : $($pi2.pPrinterName)"
-Log "  pPortName    : $($pi2.pPortName)"
-Log "  pDriverName  : $($pi2.pDriverName)"
+Log "[INFO] Registrando impressora via AddPrinterW..."
 
 if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue) {
     Remove-Printer -Name $PrinterName
@@ -159,20 +143,15 @@ while ($attempt -lt $maxAttempts -and -not $success) {
         $attempt++
         $win32Err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
         $erroMsg  = "Win32 erro $win32Err"
-        Log "  Tentativa $attempt/$maxAttempts falhou: $erroMsg"
+        Log "[INFO] Tentativa $attempt/$maxAttempts falhou: $erroMsg"
         if ($attempt -lt $maxAttempts) { Start-Sleep -Seconds 3 }
     }
 }
 
-Log ""
 if ($success) {
-    Log "Impressora adicionada com sucesso!"
-    Log "  Impressora : $PrinterName"
-    Log "  Perfil     : $ProfileName"
-    Log "  Porta      : $PortName"
+    Log "[OK] Impressora adicionada: $PrinterName | perfil: $ProfileName"
 } else {
-    Log "ERRO: falha ao registrar a impressora '$PrinterName'."
-    Log "  Motivo: $erroMsg"
+    Log "[ERRO] Falha ao registrar a impressora '$PrinterName': $erroMsg"
     $LogWriter.Close()
     exit 1
 }

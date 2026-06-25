@@ -28,15 +28,13 @@ trap {
     $LogWriter.Close()
     exit 1
 }
-function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
 Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] create-profile ==="
-Trace-Step "inicio do script"
 
-if (-not $ProfileName)    { Log "ERRO: parametro -ProfileName e obrigatorio.";    $LogWriter.Close(); exit 1 }
-if (-not $OutputPath)     { Log "ERRO: parametro -OutputPath e obrigatorio.";     $LogWriter.Close(); exit 1 }
-if (-not $OutputBaseName) { Log "ERRO: parametro -OutputBaseName e obrigatorio."; $LogWriter.Close(); exit 1 }
+if (-not $ProfileName)    { Log "[ERRO] Parametro -ProfileName e obrigatorio.";    $LogWriter.Close(); exit 1 }
+if (-not $OutputPath)     { Log "[ERRO] Parametro -OutputPath e obrigatorio.";     $LogWriter.Close(); exit 1 }
+if (-not $OutputBaseName) { Log "[ERRO] Parametro -OutputBaseName e obrigatorio."; $LogWriter.Close(); exit 1 }
 
 $GhostscriptPath       = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
 $ErrorActionPreference = "Stop"
@@ -56,25 +54,21 @@ public class Win32CreateProfile {
 }
 "@ -ErrorAction SilentlyContinue
 
-# -- Pre-requisitos --------------------------------------------------------
 $DllPath = "$env:SystemRoot\System32\meddrivemon.dll"
 if (-not (Test-Path $DllPath)) {
-    Log "ERRO: meddrivemon.dll nao encontrada em $DllPath."
+    Log "[ERRO] meddrivemon.dll nao encontrada em $DllPath."
     $LogWriter.Close(); exit 1
 }
-Trace-Step "DLL encontrada"
 
 $MonitorName = "Meddrive Printer MONITOR"
 $DriverName  = "Meddrive Printer DRIVER"
 $MonitorReg  = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\$MonitorName"
 
 if (-not (Test-Path $MonitorReg)) {
-    Log "ERRO: monitor '$MonitorName' nao encontrado no registry."
+    Log "[ERRO] Monitor '$MonitorName' nao encontrado no registry."
     $LogWriter.Close(); exit 1
 }
-Trace-Step "monitor encontrado"
 
-# Verifica driver via EnumPrinterDrivers
 $needed = [uint32]0; $returned = [uint32]0
 [Win32CreateProfile]::EnumPrinterDrivers($null, "Windows x64", 1, [IntPtr]::Zero, 0, [ref]$needed, [ref]$returned) | Out-Null
 $driverFound = $false
@@ -92,17 +86,14 @@ if ($needed -gt 0) {
     } finally { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($buf) }
 }
 if (-not $driverFound) {
-    Log "ERRO: driver '$DriverName' nao encontrado."
+    Log "[ERRO] Driver '$DriverName' nao encontrado."
     $LogWriter.Close(); exit 1
 }
-Trace-Step "driver encontrado"
 
-# -- Configuracao da porta/perfil ------------------------------------------
 $PortName = "Meddrive Printer PORT $ProfileName"
 $PortReg  = "$MonitorReg\Ports\$PortName"
 
-Log "Configurando perfil '$ProfileName'..."
-Trace-Step "registrando porta em $PortReg"
+Log "[INFO] Configurando perfil '$ProfileName'..."
 New-Item -Path $PortReg -Force | Out-Null
 Set-ItemProperty -Path $PortReg -Name "OutputPath"        -Value $OutputPath                    -Type String
 Set-ItemProperty -Path $PortReg -Name "OutputBaseName"    -Value $OutputBaseName                -Type String
@@ -110,49 +101,33 @@ Set-ItemProperty -Path $PortReg -Name "GhostscriptPath"   -Value $GhostscriptPat
 Set-ItemProperty -Path $PortReg -Name "OpenAfterGenerate" -Value ([int][bool]$OpenAfterGenerate) -Type DWord
 Set-ItemProperty -Path $PortReg -Name "OverwriteFile"     -Value ([int][bool]$OverwriteFile)     -Type DWord
 Set-ItemProperty -Path $PortReg -Name "ChoosePath"        -Value ([int][bool]$ChoosePath)        -Type DWord
-Trace-Step "porta configurada"
 
 if (-not (Test-Path $OutputPath)) {
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
-    Trace-Step "pasta de destino criada: $OutputPath"
 }
 
-# -- Spooler ---------------------------------------------------------------
-Log "Iniciando o Spooler..."
+Log "[INFO] Iniciando Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 5
 
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
-    Log "ERRO: Spooler nao esta em execucao (status: $spoolerStatus)"
+    Log "[ERRO] Spooler nao esta em execucao (status: $spoolerStatus)"
     $LogWriter.Close(); exit 1
 }
 if (-not (Test-Path $PortReg)) {
-    Log "ERRO: porta nao encontrada no registry ($PortReg)"
+    Log "[ERRO] Porta nao encontrada no registry ($PortReg)"
     $LogWriter.Close(); exit 1
 }
-Log "  OK - Spooler em execucao, porta no registry"
 
-# -- Registra a porta via AddPortExW --------------------------------------
 $pi1       = New-Object Win32CreateProfile+PORT_INFO_1
 $pi1.pName = $PortName
-Log "Registrando porta via AddPortExW..."
+Log "[INFO] Registrando porta via AddPortExW..."
 $portOk = [Win32CreateProfile]::AddPortEx($null, 1, [ref]$pi1, $MonitorName)
 if (-not $portOk) {
-    Log "  AVISO: AddPortExW falhou (Win32 erro $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
-} else {
-    Log "  OK - porta registrada via AddPortExW"
+    Log "[AVISO] AddPortExW falhou (Win32 erro $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
 }
 
-Log ""
-Log "Perfil criado com sucesso!"
-Log "  Perfil      : $ProfileName"
-Log "  Porta       : $PortName"
-Log "  Template    : $OutputBaseName"
-Log "  Saida       : $OutputPath\"
-Log "  Ghostscript : $GhostscriptPath"
-Log "  AbrirAposGerar      : $([int][bool]$OpenAfterGenerate)"
-Log "  SobrescreverArquivo : $([int][bool]$OverwriteFile)"
-Log "  EscolherDestino     : $([int][bool]$ChoosePath)"
+Log "[OK] Perfil criado: $ProfileName | $OutputPath\ | $OutputBaseName"
 
 $LogWriter.Close()

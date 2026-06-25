@@ -29,15 +29,13 @@ trap {
     $LogWriter.Close()
     exit 1
 }
-function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
 Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] edit-profile ==="
-Trace-Step "inicio do script"
 
-if (-not $ProfileName)    { Log "ERRO: parametro -ProfileName e obrigatorio.";    $LogWriter.Close(); exit 1 }
-if (-not $OutputPath)     { Log "ERRO: parametro -OutputPath e obrigatorio.";     $LogWriter.Close(); exit 1 }
-if (-not $OutputBaseName) { Log "ERRO: parametro -OutputBaseName e obrigatorio."; $LogWriter.Close(); exit 1 }
+if (-not $ProfileName)    { Log "[ERRO] Parametro -ProfileName e obrigatorio.";    $LogWriter.Close(); exit 1 }
+if (-not $OutputPath)     { Log "[ERRO] Parametro -OutputPath e obrigatorio.";     $LogWriter.Close(); exit 1 }
+if (-not $OutputBaseName) { Log "[ERRO] Parametro -OutputBaseName e obrigatorio."; $LogWriter.Close(); exit 1 }
 
 if (-not $NewName) { $NewName = $ProfileName }
 
@@ -52,10 +50,9 @@ $OldPortReg  = "$MonitorReg\Ports\$OldPortName"
 $NewPortReg  = "$MonitorReg\Ports\$NewPortName"
 
 if (-not (Test-Path $OldPortReg)) {
-    Log "ERRO: perfil '$ProfileName' nao encontrado no registry ($OldPortReg)."
+    Log "[ERRO] Perfil '$ProfileName' nao encontrado no registry ($OldPortReg)."
     $LogWriter.Close(); exit 1
 }
-Trace-Step "perfil original encontrado"
 
 Add-Type -TypeDefinition @"
 using System;
@@ -100,25 +97,21 @@ public class PortMgrWin7 {
 }
 "@ -ErrorAction SilentlyContinue
 
-# -- Spooler ---------------------------------------------------------------
-Log "Iniciando o Spooler..."
+Log "[INFO] Iniciando Spooler..."
 Start-Service -Name Spooler
 Start-Sleep -Seconds 2
 
 $spoolerStatus = (Get-Service Spooler -ErrorAction SilentlyContinue).Status
 if ($spoolerStatus -ne 'Running') {
-    Log "ERRO: Spooler nao esta em execucao (status: $spoolerStatus)"
+    Log "[ERRO] Spooler nao esta em execucao (status: $spoolerStatus)"
     $LogWriter.Close(); exit 1
 }
-Trace-Step "Spooler em execucao"
 
 $Renaming = ($NewName -ne $ProfileName)
 
 if ($Renaming) {
-    Log "Renomeando perfil '$ProfileName' -> '$NewName'..."
+    Log "[INFO] Renomeando '$ProfileName' -> '$NewName'..."
 
-    # 1. Cria nova chave no registry com os novos valores
-    Trace-Step "criando nova chave do registry: $NewPortReg"
     New-Item -Path $NewPortReg -Force | Out-Null
     Set-ItemProperty -Path $NewPortReg -Name "OutputPath"        -Value $OutputPath                    -Type String
     Set-ItemProperty -Path $NewPortReg -Name "OutputBaseName"    -Value $OutputBaseName                -Type String
@@ -126,24 +119,19 @@ if ($Renaming) {
     Set-ItemProperty -Path $NewPortReg -Name "OpenAfterGenerate" -Value ([int][bool]$OpenAfterGenerate) -Type DWord
     Set-ItemProperty -Path $NewPortReg -Name "OverwriteFile"     -Value ([int][bool]$OverwriteFile)     -Type DWord
     Set-ItemProperty -Path $NewPortReg -Name "ChoosePath"        -Value ([int][bool]$ChoosePath)        -Type DWord
-    Trace-Step "nova chave do registry criada"
 
-    # 2. Registra nova porta no spooler via AddPortExW
     $pi1 = New-Object PortMgrWin7+PORT_INFO_1
     $pi1.pName = $NewPortName
-    Log "Registrando nova porta '$NewPortName' via AddPortExW..."
+    Log "[INFO] Registrando nova porta '$NewPortName'..."
     $addOk = [PortMgrWin7]::AddPortEx($null, 1, [ref]$pi1, $MonitorName)
     if (-not $addOk) {
-        Log "  AVISO: AddPortExW falhou (Win32 erro $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
-    } else {
-        Trace-Step "nova porta registrada no spooler"
+        Log "[AVISO] AddPortExW falhou (Win32 erro $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
     }
 
-    # 3. Migra impressoras vinculadas via WMI + SetPrinter P/Invoke
     $filter = "PortName='" + $OldPortName + "'"
     $linked = Get-WmiObject Win32_Printer -Filter $filter -ErrorAction SilentlyContinue
     foreach ($wmiP in $linked) {
-        Log "  Migrando impressora '$($wmiP.Name)' para porta '$NewPortName'..."
+        Log "[INFO] Migrando impressora '$($wmiP.Name)'..."
         $hP = [IntPtr]::Zero
         if ([PortMgrWin7]::OpenPrinter($wmiP.Name, [ref]$hP, [IntPtr]::Zero)) {
             $pi2                 = New-Object PortMgrWin7+PRINTER_INFO_2
@@ -155,47 +143,31 @@ if ($Renaming) {
             $pi2.Attributes      = 0x40
             [PortMgrWin7]::SetPrinter($hP, 2, [ref]$pi2, 0) | Out-Null
             [PortMgrWin7]::ClosePrinter($hP) | Out-Null
-            Trace-Step "impressora '$($wmiP.Name)' migrada"
         }
     }
 
-    # 4. Remove a porta antiga do spooler via DeletePortW
-    Log "Removendo porta antiga '$OldPortName' via DeletePortW..."
+    Log "[INFO] Removendo porta antiga '$OldPortName'..."
     $delOk = [PortMgrWin7]::DeletePort($null, [IntPtr]::Zero, $OldPortName)
     if (-not $delOk) {
-        Log "  AVISO: DeletePortW falhou (Win32 erro $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
-    } else {
-        Trace-Step "porta antiga removida do spooler"
+        Log "[AVISO] DeletePortW falhou (Win32 erro $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
     }
 
-    # 5. Remove chave antiga do registry
     Remove-Item -Path $OldPortReg -Recurse -Force
-    Trace-Step "chave antiga do registry removida"
 
 } else {
-    Log "Atualizando configuracoes do perfil '$ProfileName'..."
+    Log "[INFO] Atualizando configuracoes do perfil '$ProfileName'..."
     Set-ItemProperty -Path $OldPortReg -Name "OutputPath"        -Value $OutputPath                    -Type String
     Set-ItemProperty -Path $OldPortReg -Name "OutputBaseName"    -Value $OutputBaseName                -Type String
     Set-ItemProperty -Path $OldPortReg -Name "GhostscriptPath"   -Value $GhostscriptPath               -Type String
     Set-ItemProperty -Path $OldPortReg -Name "OpenAfterGenerate" -Value ([int][bool]$OpenAfterGenerate) -Type DWord
     Set-ItemProperty -Path $OldPortReg -Name "OverwriteFile"     -Value ([int][bool]$OverwriteFile)     -Type DWord
     Set-ItemProperty -Path $OldPortReg -Name "ChoosePath"        -Value ([int][bool]$ChoosePath)        -Type DWord
-    Trace-Step "valores do registry atualizados"
 }
 
 if (-not (Test-Path $OutputPath)) {
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
-    Trace-Step "pasta de destino criada: $OutputPath"
 }
 
-Log ""
-Log "Perfil editado com sucesso!"
-Log "  Perfil  : $NewName"
-Log "  Porta   : $NewPortName"
-Log "  Padrao  : $OutputBaseName"
-Log "  Saida   : $OutputPath\"
-Log "  AbrirAposGerar      : $([int][bool]$OpenAfterGenerate)"
-Log "  SobrescreverArquivo : $([int][bool]$OverwriteFile)"
-Log "  EscolherDestino     : $([int][bool]$ChoosePath)"
+Log "[OK] Perfil editado: $NewName | $OutputPath\ | $OutputBaseName"
 
 $LogWriter.Close()
