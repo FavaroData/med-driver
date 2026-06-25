@@ -27,7 +27,7 @@ trap {
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
-Log "=== [$(Get-Date -Format 'HH:mm:ss')] remove-profile ==="
+Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] remove-profile ==="
 Trace-Step "inicio do script"
 
 if (-not $ProfileName) {

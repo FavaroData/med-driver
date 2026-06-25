@@ -16,7 +16,7 @@ trap {
 function Trace-Step($msg) { Write-Output "CHECKPOINT: $msg" }
 
 # Log pre-transcript  -  captura falhas antes do Start-Transcript
-try { "[$(Get-Date -Format 'HH:mm:ss')] install.ps1 iniciando" | Out-File "C:\Windows\Temp\meddrive_preinit.log" -Append -Encoding UTF8 } catch {}
+try { "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] install.ps1 iniciando" | Out-File "C:\Windows\Temp\meddrive_preinit.log" -Append -Encoding UTF8 } catch {}
 
 Trace-Step "inicio do script"
 Start-Transcript -Path "C:\Windows\Temp\meddrive_ps_install.log" -Force

@@ -26,7 +26,7 @@ trap {
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
 Log ""
-Log "=== [$(Get-Date -Format 'HH:mm:ss')] remove-printer ==="
+Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] remove-printer ==="
 Trace-Step "inicio do script"
 
 $ErrorActionPreference = "Stop"

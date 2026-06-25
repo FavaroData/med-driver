@@ -29,7 +29,7 @@ trap {
 }
 
 Log ""
-Log "=== [$(Get-Date -Format 'HH:mm:ss')] edit-printer ==="
+Log "=== [$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] edit-printer ==="
 
 $printer = Get-Printer -Name $OldPrinterName -ErrorAction SilentlyContinue
 if (-not $printer) {
