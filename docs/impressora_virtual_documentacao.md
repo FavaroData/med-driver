@@ -162,8 +162,8 @@ Perfil: "Triton"  →  Porta: "Meddrive Printer PORT Triton"
 | Pipe do agente | `\\.\pipe\MeddrivePrinter_<sessionId>` | — (IPC local) |
 | GUI | `MedDriveManager.exe` | `C:\ProgramData\Meddrive Printer\` |
 | Scripts | `conf\*.ps1` | `C:\ProgramData\Meddrive Printer\conf\` |
-| Log da DLL | `meddrivemon_init.log` | `C:\Windows\Temp\` |
-| Log do agente | `meddrive_agent.log` | `C:\Windows\Temp\` |
+| Log de impressão | `meddrive_printer.log` | `C:\Windows\Temp\` |
+| Log de gerenciamento | `meddrive_printer_manager.log` | `C:\Windows\Temp\` |
 | Log do instalador | `meddrive_ps_install.log` | `C:\Windows\Temp\` |
 
 ---
@@ -367,7 +367,8 @@ Igual ao Win10/11, exceto:
 
 | Log | Caminho | Conteúdo |
 |---|---|---|
-| DLL | `C:\Windows\Temp\meddrivemon_init.log` | Chamadas do spooler: InitializePrintMonitor2, OpenPort, WritePort, EndDocPort |
+| Impressão | `C:\Windows\Temp\meddrive_printer.log` | Fluxo completo de cada job: monitor (`[JOB]`, `[CONV]`, `[PDF]`, `[OK]`) e agente (`[agent] [JOB]`, `[agent] [GS]`, `[agent] [PDF]`, `[agent] [OK]`) no mesmo arquivo, em ordem cronológica |
+| Gerenciamento | `C:\Windows\Temp\meddrive_printer_manager.log` | Operações de CRUD de impressoras e perfis via MedDriveManager (add-printer, remove-printer, create-profile, edit-profile, remove-profile, edit-printer) |
 | Instalador Win10/11 | `C:\Windows\Temp\meddrive_ps_install.log` | Execução completa do install.ps1 (Start-Transcript) |
 | Instalador Win7 | `C:\Windows\Temp\meddrive_install.log` | Execução do install_helper.exe + etapas PS |
 
@@ -394,8 +395,11 @@ Get-ScheduledTask -TaskName MeddrivePrinterAgent | Select-Object TaskName, State
 # Processo em execução
 Get-Process MeddrivePrinterAgent -ErrorAction SilentlyContinue
 
-# Log do agente
-Get-Content C:\Windows\Temp\meddrive_agent.log
+# Log de impressão (monitor + agente unificados)
+Get-Content C:\Windows\Temp\meddrive_printer.log
+
+# Log de gerenciamento (CRUD de impressoras e perfis)
+Get-Content C:\Windows\Temp\meddrive_printer_manager.log
 ```
 
 ---
