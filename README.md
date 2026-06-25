@@ -25,7 +25,7 @@ Não exige interação do usuário após a instalação — basta instalar, cria
 | `src/monitor.c` | Implementação do monitor de impressão (MONITOR2 API) |
 | `src/monitor.h` | Variáveis e estruturas compartilhadas |
 | `src/monitor.def` | Exportações lidas pelo Spooler |
-| `agent/MeddrivePrinterAgent.c` | Agente de sessão de usuário (named pipe + Ghostscript) |
+| `src/agent/MeddrivePrinterAgent.c` | Agente de sessão de usuário (named pipe + Ghostscript) |
 | `installer/agent/register-agent.ps1` | Registro do agente no Task Scheduler (COM, compatível Vista+) |
 
 ### Scripts de gerenciamento (`installer/*/conf/`)

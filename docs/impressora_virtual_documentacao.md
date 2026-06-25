@@ -255,27 +255,30 @@ med-driver/
 ├── src/
 │   ├── monitor.c          — implementação do port monitor (MONITOR2)
 │   ├── monitor.h          — defines: MONITOR_NAME, PORT_CONTEXT
-│   └── monitor.def        — exports da DLL
-│   └── agent/
-│       ├── MeddrivePrinterAgent.c   — agente de sessão de usuário (pipe + GS)
-│       └── MeddrivePrinterAgent.exe — binário compilado
-├── gui-native/
-│   └── MedDriveManager/
-│       ├── src/
-│       │   ├── mainwnd.c          — janela principal, orquestrador de eventos
-│       │   ├── store.c            — leitura/escrita do registry (perfis e portas)
-│       │   ├── dlg_profile.c      — dialog de criação/edição de perfis
-│       │   ├── dlg_progress.c     — dialog de progresso (execução dos scripts PS)
-│       │   └── ui/
-│       │       ├── theme.c/.h     — cores, fontes, ícones
-│       │       ├── titlebar.c/.h  — barra de título customizada
-│       │       ├── navbar.c/.h    — navegação (Perfis / Impressoras / Configurações)
-│       │       ├── listview.c/.h  — listview owner-draw
-│       │       ├── statusbar.c/.h — barra de status inferior
-│       │       └── buttons.c/.h   — botões de ação
-│       └── res/
-│           ├── app.rc             — recursos Win32 (dialogs, ícones)
-│           └── resource.h         — IDs de controles e recursos
+│   ├── monitor.def        — exports da DLL
+│   ├── agent/
+│   │   ├── MeddrivePrinterAgent.c   — agente de sessão de usuário (pipe + GS)
+│   │   └── MeddrivePrinterAgent.exe — binário compilado
+│   ├── gui-native/
+│   │   └── MedDriveManager/
+│   │       ├── src/
+│   │       │   ├── mainwnd.c          — janela principal, orquestrador de eventos
+│   │       │   ├── store.c            — leitura/escrita do registry (perfis e portas)
+│   │       │   ├── dlg_profile.c      — dialog de criação/edição de perfis
+│   │       │   ├── dlg_progress.c     — dialog de progresso (execução dos scripts PS)
+│   │       │   └── ui/
+│   │       │       ├── theme.c/.h     — cores, fontes, ícones
+│   │       │       ├── titlebar.c/.h  — barra de título customizada
+│   │       │       ├── navbar.c/.h    — navegação (Perfis / Impressoras / Configurações)
+│   │       │       ├── listview.c/.h  — listview owner-draw
+│   │       │       ├── statusbar.c/.h — barra de status inferior
+│   │       │       └── buttons.c/.h   — botões de ação
+│   │       └── res/
+│   │           ├── app.rc             — recursos Win32 (dialogs, ícones)
+│   │           └── resource.h         — IDs de controles e recursos
+│   └── tests/
+│       ├── diagnostico.ps1            — verifica DLL, registry, spooler, driver, impressora
+│       └── test-ptcap.ps1             — testa PTGetPrintCapabilities
 ├── installer/
 │   ├── agent/
 │   │   └── register-agent.ps1   — registra o agente no Task Scheduler (COM, Vista+)
@@ -296,9 +299,6 @@ med-driver/
 │   │   └── conf/                  — mesmos scripts PS (compatíveis com PS 2.0)
 │   └── vista/
 │       └── setup.nsi              — script NSIS Vista SP2
-├── tests/
-│   ├── diagnostico.ps1            — verifica DLL, registry, spooler, driver, impressora
-│   └── test-ptcap.ps1             — testa PTGetPrintCapabilities
 ├── docs/
 │   ├── impressora_virtual_documentacao.md  — este arquivo
 │   ├── win7-particularidades.md            — detalhes do suporte Win7
@@ -378,7 +378,7 @@ Igual ao Win10/11, exceto:
 ### Script de diagnóstico
 
 ```powershell
-.\tests\diagnostico.ps1
+.\src\tests\diagnostico.ps1
 ```
 
 Verifica: DLL, registry do monitor, driver, PPD, spooler, impressora.
