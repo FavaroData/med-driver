@@ -85,209 +85,19 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Região: Templates de nome de arquivo
-//
-// O campo OutputBaseName no registry armazena um template que pode conter
-// tokens substituídos em tempo de impressão:
-//
-//   {n}         → contador incremental (1, 2, 3...)
-//   {nn}        → contador com 2 dígitos (01, 02, 03...)
-//   {nnn}       → contador com 3 dígitos (001, 002, 003...)
-//   {data}      → data atual no formato YYYY-MM-DD
-//   {hora}      → hora atual no formato HH-MM-SS
-//   {documento} → nome do job de impressão (chars inválidos substituídos por '_')
-//
-// Regras:
-//   - Sem tokens {}: tratado como "<valor>-{n}" (retrocompat. com versões antigas)
-//   - Com {n*}: a pasta é escaneada para encontrar o maior N presente;
-//     o próximo job usa N+1
-//   - Sem {n*}: resolve direto; jobs com mesmo resultado sobrescrevem o arquivo
-// ═══════════════════════════════════════════════════════════════════════════
 
-// Substitui caracteres inválidos em nome de arquivo Windows por '_'
-static void sanitize_doc_name(const WCHAR *src, WCHAR *dst, int cch) {
-    static const WCHAR invalid[] = L"\\/:*?\"<>|";
-    int di = 0;
-    for (int i = 0; src[i] && di < cch - 1; i++) {
-        WCHAR c = src[i];
-        dst[di++] = wcschr(invalid, c) ? L'_' : c;
-    }
-    dst[di] = 0;
-}
-
-// Substitui tokens do template em uma única passagem pelo buffer de saída.
-// nStr aceita número formatado (ex: "003") ou L"*" quando chamado para montar padrão glob.
-static void apply_token_replacements(
-    const WCHAR *tmpl, WCHAR *dst, int cchDst,
-    const WCHAR *dateStr, const WCHAR *timeStr,
-    const WCHAR *docStr,  const WCHAR *nStr)
-{
-    int di = 0;
-    const WCHAR *p = tmpl;
-
-    // tabela de tokens fixos — evita uma cadeia de if/else por token
-    struct { const WCHAR *token; const WCHAR *value; } fixed[3] = {
-        { L"{data}",      dateStr },
-        { L"{hora}",      timeStr },
-        { L"{documento}", docStr  },
-    };
-
-    while (*p && di < cchDst - 1) {
-        // char comum: copia direto e avança
-        if (*p != L'{') { dst[di++] = *p++; continue; }
-
-        // tenta casar com cada token fixo
-        BOOL matched = FALSE;
-        for (int k = 0; k < 3 && !matched; k++) {
-            int tlen = (int)wcslen(fixed[k].token);
-            if (wcsncmp(p, fixed[k].token, tlen) == 0) {
-                for (int j = 0; fixed[k].value[j] && di < cchDst-1; j++)
-                    dst[di++] = fixed[k].value[j];
-                p += tlen;
-                matched = TRUE;
-            }
-        }
-        if (matched) continue;
-
-        // {n}, {nn}, {nnn}...: conta quantos 'n' há entre as chaves para aceitar qualquer largura
-        const WCHAR *q = p + 1;
-        while (*q == L'n') q++;
-        if (q > p + 1 && *q == L'}') {
-            for (int j = 0; nStr[j] && di < cchDst-1; j++)
-                dst[di++] = nStr[j];
-            p = q + 1;
-            continue;
-        }
-
-        dst[di++] = *p++; // chave desconhecida: copia literal
-    }
-    dst[di] = 0;
-}
-
-// Detecta token {n+} no template; retorna o número de 'n' (largura) ou 0 se ausente.
-static int detect_n_token_width(const WCHAR *tmpl) {
-    for (int i = 0; tmpl[i]; i++) {
-        if (tmpl[i] == L'{') {
-            int j = i + 1, cnt = 0;
-            while (tmpl[j] == L'n') { cnt++; j++; }
-            if (cnt > 0 && tmpl[j] == L'}') return cnt;
-        }
-    }
-    return 0;
-}
-
-// Resolve o template e grava o caminho completo do PDF em ctx->resolvedPath.
-static void resolve_template(PORT_CONTEXT *ctx) {
-    const WCHAR *tmpl = ctx->outputBaseName;
-
-    // Retrocompatibilidade: template sem tokens → append "-{n}"
-    WCHAR adjustedTmpl[MAX_PATH];
-    if (!wcschr(tmpl, L'{')) {
-        _snwprintf(adjustedTmpl, MAX_PATH, L"%s-{n}", tmpl);
-        tmpl = adjustedTmpl;
-        LogDebug("resolve_template: sem tokens, retrocompat '%ls'\n", adjustedTmpl);
-    }
-
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    WCHAR dateStr[16], timeStr[16];
-    _snwprintf(dateStr, 16, L"%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
-    _snwprintf(timeStr, 16, L"%02d-%02d-%02d", st.wHour, st.wMinute, st.wSecond);
-
-    WCHAR safeDoc[512] = {0};
-    sanitize_doc_name(ctx->docName[0] ? ctx->docName : L"documento", safeDoc, 512);
-
-    int nWidth = detect_n_token_width(tmpl);
-
-    if (nWidth > 0) {
-        WCHAR nStr[16];
-
-        if (ctx->overwriteFile) {
-            // Sobrescrever: usa contador fixo 1, sem escanear a pasta
-            if (nWidth == 1)
-                _snwprintf(nStr, 16, L"%d", 1);
-            else
-                _snwprintf(nStr, 16, L"%0*d", nWidth, 1);
-            LogDebug("resolve_template: overwriteFile=1, counter fixo '%ls'\n", nStr);
-        } else {
-            // Incrementar: escaneia a pasta e usa maxN+1
-            WCHAR globName[MAX_PATH];
-            // {data} (10 chars) e {hora} (8 chars) usam '?' para combinar qualquer
-            // valor — assim arquivos de sessões anteriores são encontrados corretamente.
-            apply_token_replacements(tmpl, globName, MAX_PATH,
-                                     L"??????????", L"????????", safeDoc, L"*");
-
-            // padrão glob para FindFirstFileW: ex. "C:\PDFs\galilei_??????????_*.pdf"
-            // '?' cobre qualquer char de data/hora; '*' cobre o número do contador
-            WCHAR globPattern[MAX_PATH];
-            _snwprintf(globPattern, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, globName);
-
-            // prefixLen e suffixLen delimitam onde o número aparece dentro do nome do arquivo
-            // necessário para extrair só o dígito sem incluir texto fixo antes ou depois
-            const WCHAR *star = wcschr(globName, L'*');
-            int prefixLen = star ? (int)(star - globName) : 0;
-            int suffixLen = star ? (int)wcslen(star + 1) : 0;
-
-            // percorre todos os arquivos correspondentes e rastreia o maior N encontrado
-            int maxN = 0;
-            WIN32_FIND_DATAW fd;
-            HANDLE hFind = FindFirstFileW(globPattern, &fd);
-            if (hFind != INVALID_HANDLE_VALUE) {
-                do {
-                    int fnLen  = (int)wcslen(fd.cFileName);
-                    int pdfLen = 4; // desconta ".pdf"
-                    int nStart = prefixLen;
-                    int nEnd   = fnLen - pdfLen - suffixLen;
-                    if (nEnd > nStart) {
-                        WCHAR nBuf[16] = {0};
-                        wcsncpy_s(nBuf, 16, fd.cFileName + nStart, (size_t)(nEnd - nStart));
-                        int n = _wtoi(nBuf);
-                        if (n > maxN) maxN = n;
-                    }
-                } while (FindNextFileW(hFind, &fd));
-                FindClose(hFind);
-            }
-
-            // próximo job usa maxN+1, formatado conforme a largura do token ({n}, {nn}, {nnn}...)
-            if (nWidth == 1)
-                _snwprintf(nStr, 16, L"%d", maxN + 1);
-            else
-                _snwprintf(nStr, 16, L"%0*d", nWidth, maxN + 1);
-        }
-
-        WCHAR finalName[MAX_PATH];
-        apply_token_replacements(tmpl, finalName, MAX_PATH,
-                                 dateStr, timeStr, safeDoc, nStr);
-        _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, finalName);
-    } else {
-        // template sem {n}: resolve o nome direto, sem escanear a pasta
-        WCHAR finalName[MAX_PATH];
-        apply_token_replacements(tmpl, finalName, MAX_PATH,
-                                 dateStr, timeStr, safeDoc, L"");
-        _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, finalName);
-
-        // se o arquivo já existe e overwriteFile=0, busca o próximo slot livre no padrão Windows
-        if (!ctx->overwriteFile && GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES) {
-            int copy = 1;
-            do {
-                _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s (%d).pdf",
-                           ctx->outputPath, finalName, copy++);
-            } while (GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES);
-        }
-    }
-
-    LogDebug("resolve_template: %ls\n", ctx->resolvedPath);
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-
-// Structs trocadas pelo pipe entre o Spooler (sessao 0) e o agente (sessao 1)
+// Structs trocadas pelo pipe entre o Spooler (sessao 0) e o agente (sessao 1).
+// O monitor envia os ingredientes brutos; o agente resolve o nome do arquivo
+// com suas proprias credenciais (necessario para pastas de rede).
 typedef struct {
-    WCHAR psTempPath[MAX_PATH];
-    WCHAR outputPath[MAX_PATH];
-    WCHAR gsPath[MAX_PATH];
-    DWORD openAfterGenerate;
-    DWORD choosePath;
+    WCHAR psTempPath[MAX_PATH];    // arquivo PS temporario gerado pelo Spooler
+    WCHAR outputPath[MAX_PATH];    // pasta de destino (ex: C:\PDFs ou \\servidor\PDFs)
+    WCHAR outputBaseName[256];     // template do nome (ex: {documento}_{nnn})
+    WCHAR docName[512];            // nome do job de impressao (ex: "Relatorio Abril")
+    WCHAR gsPath[MAX_PATH];        // caminho do executavel do Ghostscript
+    DWORD openAfterGenerate;       // 1 = abrir o PDF no visualizador apos gerar
+    DWORD choosePath;              // 1 = mostrar dialogo "Salvar Como" antes de converter
+    DWORD overwriteFile;           // 1 = sobrescrever se existir; 0 = incrementar contador
 } PrintJobMsg;
 
 typedef struct {
@@ -342,17 +152,17 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx, BOOL *pCancelled) {
         return FALSE;
     }
 
-    // resolve o template so depois de confirmar que o pipe esta disponivel,
-    // assim nao escaneia a pasta de saida para um job que seria cancelado de qualquer forma
-    // quando choosePath esta ativo, o agente resolve o caminho via dialogo;
-    // o template ainda e resolvido para fornecer o nome sugerido no dialogo
-    resolve_template(ctx);
+    // envia os ingredientes brutos; o agente resolve o nome do arquivo do lado dele,
+    // onde tem credenciais do usuario para acessar pastas de rede
     PrintJobMsg msg = {0};
-    wcscpy_s(msg.psTempPath, MAX_PATH, ctx->tempPsFile);
-    wcscpy_s(msg.outputPath, MAX_PATH, ctx->resolvedPath);
-    wcscpy_s(msg.gsPath,     MAX_PATH, ctx->ghostscriptPath);
+    wcscpy_s(msg.psTempPath,    MAX_PATH, ctx->tempPsFile);
+    wcscpy_s(msg.outputPath,    MAX_PATH, ctx->outputPath);
+    wcscpy_s(msg.outputBaseName, 256,    ctx->outputBaseName);
+    wcscpy_s(msg.docName,        512,    ctx->docName);
+    wcscpy_s(msg.gsPath,        MAX_PATH, ctx->ghostscriptPath);
     msg.openAfterGenerate = ctx->openAfterGenerate;
     msg.choosePath        = ctx->choosePath;
+    msg.overwriteFile     = ctx->overwriteFile;
     DWORD written = 0;
     WriteFile(hPipe, &msg, sizeof(msg), &written, NULL);
     LogDebug("CallAgent: msg enviada (%lu bytes)\n", written);
@@ -671,11 +481,8 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     LogDebug("EndDocPort: agente=%s cancelled=%d\n", ok ? "OK" : "FALHOU", cancelled);
     DeleteFileW(ctx->tempPsFile);
 
-    if (ok) {
-        ok = (GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES);
-        LogDebug("EndDocPort: PDF=%s path=%ls\n", ok ? "OK" : "NAO ENCONTRADO", ctx->resolvedPath);
-    }
-
+    // o agente ja verificou o PDF do lado dele (com credenciais do usuario);
+    // o monitor so precisa saber se deu certo ou nao
     // remove o job da fila em caso de sucesso ou cancelamento pelo usuario
     if (ok || cancelled) {
         DeleteJobCtx *j = HeapAlloc(GetProcessHeap(), 0, sizeof(DeleteJobCtx));

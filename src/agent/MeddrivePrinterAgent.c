@@ -22,11 +22,14 @@
 #define LOG_PATH    L"C:\\Windows\\Temp\\meddrive_agent.log"
 
 typedef struct {
-    WCHAR psTempPath[MAX_PATH];
-    WCHAR outputPath[MAX_PATH];
-    WCHAR gsPath[MAX_PATH];
-    DWORD openAfterGenerate;
-    DWORD choosePath;
+    WCHAR psTempPath[MAX_PATH];    // arquivo PS temporario gerado pelo Spooler
+    WCHAR outputPath[MAX_PATH];    // pasta de destino (ex: C:\PDFs ou \\servidor\PDFs)
+    WCHAR outputBaseName[256];     // template do nome (ex: {documento}_{nnn})
+    WCHAR docName[512];            // nome do job de impressao (ex: "Relatorio Abril")
+    WCHAR gsPath[MAX_PATH];        // caminho do executavel do Ghostscript
+    DWORD openAfterGenerate;       // 1 = abrir o PDF no visualizador apos gerar
+    DWORD choosePath;              // 1 = mostrar dialogo "Salvar Como" antes de converter
+    DWORD overwriteFile;           // 1 = sobrescrever se existir; 0 = incrementar contador
 } PrintJobMsg;
 
 typedef struct {
@@ -35,6 +38,152 @@ typedef struct {
     WCHAR outputPath[MAX_PATH];
     DWORD userCancelled;
 } PrintJobResponse;
+
+// Troca caracteres proibidos em nomes de arquivo Windows por '_'.
+static void sanitize_doc_name(const WCHAR *src, WCHAR *dst, int cch) {
+    static const WCHAR invalid[] = L"\\/:*?\"<>|";
+    int di = 0;
+    for (int i = 0; src[i] && di < cch - 1; i++) {
+        WCHAR c = src[i];
+        dst[di++] = wcschr(invalid, c) ? L'_' : c;
+    }
+    dst[di] = 0;
+}
+
+// Percorre o template e substitui cada token pelo valor correspondente.
+// nStr pode ser um numero formatado (ex: "003") ou L"*" para montar um padrao de busca.
+static void apply_token_replacements(
+    const WCHAR *tmpl, WCHAR *dst, int cchDst,
+    const WCHAR *dateStr, const WCHAR *timeStr,
+    const WCHAR *docStr,  const WCHAR *nStr)
+{
+    int di = 0;
+    const WCHAR *p = tmpl;
+    struct { const WCHAR *token; const WCHAR *value; } fixed[3] = {
+        { L"{data}",      dateStr },
+        { L"{hora}",      timeStr },
+        { L"{documento}", docStr  },
+    };
+    while (*p && di < cchDst - 1) {
+        if (*p != L'{') { dst[di++] = *p++; continue; }
+        BOOL matched = FALSE;
+        for (int k = 0; k < 3 && !matched; k++) {
+            int tlen = (int)wcslen(fixed[k].token);
+            if (wcsncmp(p, fixed[k].token, tlen) == 0) {
+                for (int j = 0; fixed[k].value[j] && di < cchDst-1; j++)
+                    dst[di++] = fixed[k].value[j];
+                p += tlen;
+                matched = TRUE;
+            }
+        }
+        if (matched) continue;
+        // {n}, {nn}, {nnn}: aceita qualquer largura de contador
+        const WCHAR *q = p + 1;
+        while (*q == L'n') q++;
+        if (q > p + 1 && *q == L'}') {
+            for (int j = 0; nStr[j] && di < cchDst-1; j++)
+                dst[di++] = nStr[j];
+            p = q + 1;
+            continue;
+        }
+        dst[di++] = *p++;
+    }
+    dst[di] = 0;
+}
+
+// Retorna a largura do token {n+} (numero de 'n' entre chaves), ou 0 se nao houver.
+static int detect_n_token_width(const WCHAR *tmpl) {
+    for (int i = 0; tmpl[i]; i++) {
+        if (tmpl[i] == L'{') {
+            int j = i + 1, cnt = 0;
+            while (tmpl[j] == L'n') { cnt++; j++; }
+            if (cnt > 0 && tmpl[j] == L'}') return cnt;
+        }
+    }
+    return 0;
+}
+
+// Decide o nome final do PDF a partir do template e grava o caminho completo em resolvedPath.
+// Roda no agente (sessao do usuario) para ter acesso a pastas de rede.
+static void resolve_output_path(
+    const WCHAR *outputPath, const WCHAR *outputBaseName,
+    const WCHAR *docName, DWORD overwriteFile,
+    WCHAR *resolvedPath)
+{
+    const WCHAR *tmpl = outputBaseName;
+
+    // template sem tokens vira "<nome>-{n}" para nao sobrescrever silenciosamente
+    WCHAR adjustedTmpl[MAX_PATH];
+    if (!wcschr(tmpl, L'{')) {
+        _snwprintf(adjustedTmpl, MAX_PATH, L"%s-{n}", tmpl);
+        tmpl = adjustedTmpl;
+    }
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    WCHAR dateStr[16], timeStr[16];
+    _snwprintf(dateStr, 16, L"%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay);
+    _snwprintf(timeStr, 16, L"%02d-%02d-%02d", st.wHour, st.wMinute, st.wSecond);
+
+    WCHAR safeDoc[512] = {0};
+    sanitize_doc_name(docName[0] ? docName : L"documento", safeDoc, 512);
+
+    int nWidth = detect_n_token_width(tmpl);
+
+    if (nWidth > 0) {
+        WCHAR nStr[16];
+        if (overwriteFile) {
+            // sobrescrever ativado: sempre usa o numero 1, sem varrer a pasta
+            _snwprintf(nStr, 16, nWidth == 1 ? L"%d" : L"%0*d", nWidth == 1 ? 1 : nWidth, 1);
+        } else {
+            // descobre o maior numero ja usado na pasta e usa o proximo
+            WCHAR globName[MAX_PATH];
+            // '?' cobre data e hora para encontrar arquivos de sessoes anteriores
+            apply_token_replacements(tmpl, globName, MAX_PATH,
+                                     L"??????????", L"????????", safeDoc, L"*");
+            WCHAR globPattern[MAX_PATH];
+            _snwprintf(globPattern, MAX_PATH, L"%s\\%s.pdf", outputPath, globName);
+
+            const WCHAR *star = wcschr(globName, L'*');
+            int prefixLen = star ? (int)(star - globName) : 0;
+            int suffixLen = star ? (int)wcslen(star + 1) : 0;
+
+            int maxN = 0;
+            WIN32_FIND_DATAW fd;
+            HANDLE hFind = FindFirstFileW(globPattern, &fd);
+            if (hFind != INVALID_HANDLE_VALUE) {
+                do {
+                    int fnLen = (int)wcslen(fd.cFileName);
+                    int nStart = prefixLen;
+                    int nEnd   = fnLen - 4 - suffixLen; // 4 = strlen(".pdf")
+                    if (nEnd > nStart) {
+                        WCHAR nBuf[16] = {0};
+                        wcsncpy_s(nBuf, 16, fd.cFileName + nStart, (size_t)(nEnd - nStart));
+                        int n = _wtoi(nBuf);
+                        if (n > maxN) maxN = n;
+                    }
+                } while (FindNextFileW(hFind, &fd));
+                FindClose(hFind);
+            }
+            _snwprintf(nStr, 16, nWidth == 1 ? L"%d" : L"%0*d", nWidth == 1 ? maxN+1 : nWidth, maxN + 1);
+        }
+        WCHAR finalName[MAX_PATH];
+        apply_token_replacements(tmpl, finalName, MAX_PATH, dateStr, timeStr, safeDoc, nStr);
+        _snwprintf(resolvedPath, MAX_PATH, L"%s\\%s.pdf", outputPath, finalName);
+    } else {
+        // sem token {n}: resolve direto; se o arquivo ja existe e nao pode sobrescrever,
+        // usa o padrao do Windows: "nome (2).pdf", "nome (3).pdf"...
+        WCHAR finalName[MAX_PATH];
+        apply_token_replacements(tmpl, finalName, MAX_PATH, dateStr, timeStr, safeDoc, L"");
+        _snwprintf(resolvedPath, MAX_PATH, L"%s\\%s.pdf", outputPath, finalName);
+        if (!overwriteFile && GetFileAttributesW(resolvedPath) != INVALID_FILE_ATTRIBUTES) {
+            int copy = 1;
+            do {
+                _snwprintf(resolvedPath, MAX_PATH, L"%s\\%s (%d).pdf", outputPath, finalName, copy++);
+            } while (GetFileAttributesW(resolvedPath) != INVALID_FILE_ATTRIBUTES);
+        }
+    }
+}
 
 static void Log(const char *fmt, ...) {
     HANDLE hLog = CreateFileW(LOG_PATH,
@@ -102,19 +251,23 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
             CloseHandle(hPipe);
             continue;
         }
-        Log("[agent] job: ps=%ls out=%ls choosePath=%lu\n",
-            msg.psTempPath, msg.outputPath, msg.choosePath);
+        Log("[agent] job: ps=%ls out=%ls template=%ls choosePath=%lu\n",
+            msg.psTempPath, msg.outputPath, msg.outputBaseName, msg.choosePath);
 
         PrintJobResponse resp = {0};
 
-        if (msg.choosePath) {
-            WCHAR szFile[MAX_PATH];
-            wcsncpy_s(szFile, MAX_PATH, msg.outputPath, _TRUNCATE);
+        // resolve o nome do arquivo com as credenciais do usuario (acessa pastas de rede)
+        WCHAR resolvedPath[MAX_PATH] = {0};
+        resolve_output_path(msg.outputPath, msg.outputBaseName,
+                            msg.docName, msg.overwriteFile, resolvedPath);
+        Log("[agent] caminho resolvido: %ls\n", resolvedPath);
 
+        if (msg.choosePath) {
+            // usa o nome resolvido como sugestao; o usuario pode alterar antes de salvar
             OPENFILENAMEW ofn = {0};
             ofn.lStructSize = sizeof(ofn);
             ofn.lpstrFilter = L"Arquivos PDF (*.pdf)\0*.pdf\0";
-            ofn.lpstrFile   = szFile;
+            ofn.lpstrFile   = resolvedPath;
             ofn.nMaxFile    = MAX_PATH;
             ofn.lpstrTitle  = L"Salvar PDF";
             ofn.lpstrDefExt = L"pdf";
@@ -130,14 +283,13 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
                 CloseHandle(hPipe);
                 continue;
             }
-            wcsncpy_s(msg.outputPath, MAX_PATH, szFile, _TRUNCATE);
-            Log("[agent] caminho escolhido: %ls\n", msg.outputPath);
+            Log("[agent] caminho escolhido: %ls\n", resolvedPath);
         }
 
         WCHAR cmdLine[2048];
         _snwprintf(cmdLine, 2048,
             L"\"%s\" -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%s\" \"%s\"",
-            msg.gsPath, msg.outputPath, msg.psTempPath);
+            msg.gsPath, resolvedPath, msg.psTempPath);
 
         STARTUPINFOW si = {0};
         si.cb = sizeof(si);
@@ -155,15 +307,26 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
             GetExitCodeProcess(pi.hProcess, &resp.exitCode);
             CloseHandle(pi.hProcess);
             CloseHandle(pi.hThread);
-            if (resp.exitCode != 0)
+            if (resp.exitCode == 0) {
+                // GS as vezes retorna 0 mesmo sem gravar — confirma o arquivo
+                if (GetFileAttributesW(resolvedPath) == INVALID_FILE_ATTRIBUTES) {
+                    resp.exitCode = 1;
+                    _snwprintf(resp.errorMsg, 512,
+                        L"PDF nao encontrado apos conversao: %ls", resolvedPath);
+                    Log("[agent] PDF nao encontrado: %ls\n", resolvedPath);
+                } else {
+                    Log("[agent] PDF confirmado: %ls\n", resolvedPath);
+                    if (msg.openAfterGenerate)
+                        ShellExecuteW(NULL, L"open", resolvedPath, NULL, NULL, SW_SHOWNORMAL);
+                }
+            } else {
                 _snwprintf(resp.errorMsg, 512,
                     L"Ghostscript falhou: codigo %lu", resp.exitCode);
+            }
             Log("[agent] GS exitCode=%lu\n", resp.exitCode);
-            if (resp.exitCode == 0 && msg.openAfterGenerate)
-                ShellExecuteW(NULL, L"open", msg.outputPath, NULL, NULL, SW_SHOWNORMAL);
         }
 
-        wcsncpy_s(resp.outputPath, MAX_PATH, msg.outputPath, _TRUNCATE);
+        wcsncpy_s(resp.outputPath, MAX_PATH, resolvedPath, _TRUNCATE);
 
         DWORD bytesWritten = 0;
         WriteFile(hPipe, &resp, sizeof(resp), &bytesWritten, NULL);
