@@ -368,7 +368,7 @@ int main(void)
     }
 
     const wchar_t *rootFiles[] = {
-        L"MEDDRIVE.PPD", L"MedDriveManager.exe", NULL
+        L"MEDDRIVE.PPD", L"MedDriveManager.exe", L"MeddrivePrinterAgent.exe", NULL
     };
     for (int i = 0; rootFiles[i]; i++) {
         wchar_t src[MAX_PATH], dst[MAX_PATH];

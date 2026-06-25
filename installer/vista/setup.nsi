@@ -30,7 +30,8 @@ Este instalador irá configurar:$\r$\n\
   • Monitor de impressão (meddrivemon.dll)$\r$\n\
   • Driver PSCRIPT5 customizado$\r$\n\
   • Ghostscript 9.18 (motor de conversão PDF)$\r$\n\
-  • Aplicativo de gerenciamento MedDriveManager$\r$\n$\r$\n\
+  • Aplicativo de gerenciamento MedDriveManager$\r$\n\
+  • Agente de sessão MeddrivePrinterAgent$\r$\n$\r$\n\
 Após a instalação, use o MedDriveManager para criar perfis e impressoras.$\r$\n$\r$\n\
 Clique em Avançar para continuar."
 
@@ -79,6 +80,8 @@ Function PgPaths
     StrCpy $R4 "$R4  $R3\conf\edit-printer.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\remove-printer.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\remove-profile.ps1$\r$\n"
+    StrCpy $R4 "$R4$\r$\nAgente de sessao:$\r$\n"
+    StrCpy $R4 "$R4  $R3\MeddrivePrinterAgent.exe$\r$\n"
     StrCpy $R4 "$R4$\r$\nGhostscript 9.18 (motor PDF):$\r$\n"
     StrCpy $R4 "$R4  $R3\Ghostscript\"
     SendMessage $hEditPaths ${WM_SETTEXT} 0 "STR:$R4"
@@ -167,6 +170,9 @@ Instale manualmente via Windows Update (KB968930) e tente novamente."
     File "..\win7\MEDDRIVE.PPD"
     File "..\win7\install_helper.exe"
     File "..\win10-11\x64\Debug\MedDriveManager.exe"
+    File "..\..\src\agent\MeddrivePrinterAgent.exe"
+    SetOutPath "$INSTDIR\installer\agent"
+    File "..\..\src\agent\register-agent.ps1"
     SetOutPath "$INSTDIR\installer\conf"
     File "..\win7\conf\add-printer.ps1"
     File "..\win7\conf\create-profile.ps1"
@@ -189,7 +195,17 @@ Instale manualmente via Windows Update (KB968930) e tente novamente."
     nsExec::ExecToLog '"$INSTDIR\installer\install_helper.exe" "$INSTDIR\installer"'
     Pop $0
 
+    DetailPrint "Registrando agente no Task Scheduler..."
+    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\agent\register-agent.ps1"'
+    Pop $1
+    ${If} $1 != 0
+        DetailPrint "AVISO: falha ao registrar MeddrivePrinterAgent (codigo $1)"
+    ${EndIf}
+
     ; limpa temporários (arquivos já copiados para ProgramData pelo install_helper.exe)
+    Delete "$INSTDIR\installer\agent\register-agent.ps1"
+    RMDir  "$INSTDIR\installer\agent"
+    Delete "$INSTDIR\installer\MeddrivePrinterAgent.exe"
     Delete "$INSTDIR\installer\install_helper.exe"
     Delete "$INSTDIR\installer\conf\add-printer.ps1"
     Delete "$INSTDIR\installer\conf\create-profile.ps1"
