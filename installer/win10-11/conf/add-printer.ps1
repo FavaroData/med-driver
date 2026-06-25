@@ -149,7 +149,10 @@ while ($attempt -lt $maxAttempts -and -not $success) {
 }
 
 if ($success) {
-    Log "[OK] Impressora adicionada: $PrinterName | perfil: $ProfileName"
+    Log "[OK] Impressora adicionada com sucesso!"
+    Log "     Impressora : $PrinterName"
+    Log "     Perfil     : $ProfileName"
+    Log "     Porta      : $PortName"
 } else {
     Log "[ERRO] Falha ao registrar a impressora '$PrinterName': $erroMsg"
     $LogWriter.Close()

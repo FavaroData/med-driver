@@ -40,7 +40,8 @@ if ($spoolerStatus -ne 'Running') {
 Log "[INFO] Removendo impressora '$PrinterName'..."
 if (Get-Printer -Name $PrinterName -ErrorAction SilentlyContinue) {
     Remove-Printer -Name $PrinterName
-    Log "[OK] Impressora '$PrinterName' removida"
+    Log "[OK] Impressora removida com sucesso!"
+    Log "     Impressora : $PrinterName"
 } else {
     Log "[AVISO] Impressora '$PrinterName' nao encontrada no sistema"
 }

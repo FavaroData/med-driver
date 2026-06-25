@@ -168,6 +168,13 @@ if (-not (Test-Path $OutputPath)) {
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 }
 
-Log "[OK] Perfil editado: $NewName | $OutputPath\ | $OutputBaseName"
+Log "[OK] Perfil editado com sucesso!"
+Log "     Perfil  : $NewName"
+Log "     Porta   : $NewPortName"
+Log "     Padrao  : $OutputBaseName"
+Log "     Saida   : $OutputPath\"
+Log "     AbrirAposGerar      : $([int][bool]$OpenAfterGenerate)"
+Log "     SobrescreverArquivo : $([int][bool]$OverwriteFile)"
+Log "     EscolherDestino     : $([int][bool]$ChoosePath)"
 
 $LogWriter.Close()

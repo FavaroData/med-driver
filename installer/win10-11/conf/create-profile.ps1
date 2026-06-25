@@ -118,6 +118,13 @@ if (-not $portOk) {
     Log "[AVISO] AddPortExW falhou (Win32 erro $portErr)"
 }
 
-Log "[OK] Perfil criado: $ProfileName | $OutputPath\ | $OutputBaseName"
+Log "[OK] Perfil criado com sucesso!"
+Log "     Perfil      : $ProfileName"
+Log "     Porta       : $PortName"
+Log "     Template    : $OutputBaseName"
+Log "     Saida       : $OutputPath\"
+Log "     AbrirAposGerar      : $([int][bool]$OpenAfterGenerate)"
+Log "     SobrescreverArquivo : $([int][bool]$OverwriteFile)"
+Log "     EscolherDestino     : $([int][bool]$ChoosePath)"
 
 $LogWriter.Close()

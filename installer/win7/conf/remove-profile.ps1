@@ -75,6 +75,8 @@ if (-not $ok) {
 
 Remove-Item -Path $PortReg -Recurse -Force
 
-Log "[OK] Perfil removido: $ProfileName"
+Log "[OK] Perfil removido com sucesso!"
+Log "     Perfil : $ProfileName"
+Log "     Porta  : $PortName"
 
 $LogWriter.Close()

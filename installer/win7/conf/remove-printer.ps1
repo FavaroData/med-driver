@@ -54,7 +54,8 @@ if ([Win32RemovePrinter]::OpenPrinter($PrinterName, [ref]$hPrinter, [IntPtr]::Ze
     $ok = [Win32RemovePrinter]::DeletePrinter($hPrinter)
     [Win32RemovePrinter]::ClosePrinter($hPrinter) | Out-Null
     if ($ok) {
-        Log "[OK] Impressora '$PrinterName' removida"
+        Log "[OK] Impressora removida com sucesso!"
+    Log "     Impressora : $PrinterName"
     } else {
         $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
         Log "[AVISO] DeletePrinter falhou (Win32 erro $err)"

@@ -56,6 +56,8 @@ if ($printer.PortName -ne $PortName) {
     Log "[INFO] Perfil ja esta definido como '$ProfileName', sem alteracao."
 }
 
-Log "[OK] Impressora '$NewPrinterName' atualizada com sucesso."
+Log "[OK] Impressora atualizada com sucesso!"
+Log "     Impressora : $NewPrinterName"
+Log "     Perfil     : $ProfileName"
 $LogWriter.Close()
 exit 0
