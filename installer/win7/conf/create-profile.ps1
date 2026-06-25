@@ -6,7 +6,8 @@ param(
     [string]$OutputPath,
     [string]$OutputBaseName,
     [switch]$OpenAfterGenerate,
-    [switch]$OverwriteFile
+    [switch]$OverwriteFile,
+    [switch]$ChoosePath
 )
 
 $LogFile   = "C:\Windows\Temp\meddrive_ps_createprofile.log"
@@ -106,6 +107,7 @@ Set-ItemProperty -Path $PortReg -Name "OutputBaseName"    -Value $OutputBaseName
 Set-ItemProperty -Path $PortReg -Name "GhostscriptPath"   -Value $GhostscriptPath               -Type String
 Set-ItemProperty -Path $PortReg -Name "OpenAfterGenerate" -Value ([int][bool]$OpenAfterGenerate) -Type DWord
 Set-ItemProperty -Path $PortReg -Name "OverwriteFile"     -Value ([int][bool]$OverwriteFile)     -Type DWord
+Set-ItemProperty -Path $PortReg -Name "ChoosePath"        -Value ([int][bool]$ChoosePath)        -Type DWord
 Trace-Step "porta configurada"
 
 if (-not (Test-Path $OutputPath)) {
@@ -149,5 +151,6 @@ Log "  Saida       : $OutputPath\"
 Log "  Ghostscript : $GhostscriptPath"
 Log "  AbrirAposGerar      : $([int][bool]$OpenAfterGenerate)"
 Log "  SobrescreverArquivo : $([int][bool]$OverwriteFile)"
+Log "  EscolherDestino     : $([int][bool]$ChoosePath)"
 
 $LogWriter.Close()

@@ -7,7 +7,8 @@ param(
     [string]$OutputPath,
     [string]$OutputBaseName,
     [switch]$OpenAfterGenerate,
-    [switch]$OverwriteFile
+    [switch]$OverwriteFile,
+    [switch]$ChoosePath
 )
 
 $LogFile   = "C:\Windows\Temp\meddrive_ps_editprofile.log"
@@ -122,6 +123,7 @@ if ($Renaming) {
     Set-ItemProperty -Path $NewPortReg -Name "GhostscriptPath"   -Value $GhostscriptPath               -Type String
     Set-ItemProperty -Path $NewPortReg -Name "OpenAfterGenerate" -Value ([int][bool]$OpenAfterGenerate) -Type DWord
     Set-ItemProperty -Path $NewPortReg -Name "OverwriteFile"     -Value ([int][bool]$OverwriteFile)     -Type DWord
+    Set-ItemProperty -Path $NewPortReg -Name "ChoosePath"        -Value ([int][bool]$ChoosePath)        -Type DWord
     Trace-Step "nova chave do registry criada"
 
     # 2. Registra nova porta no spooler via AddPortExW
@@ -175,6 +177,7 @@ if ($Renaming) {
     Set-ItemProperty -Path $OldPortReg -Name "GhostscriptPath"   -Value $GhostscriptPath               -Type String
     Set-ItemProperty -Path $OldPortReg -Name "OpenAfterGenerate" -Value ([int][bool]$OpenAfterGenerate) -Type DWord
     Set-ItemProperty -Path $OldPortReg -Name "OverwriteFile"     -Value ([int][bool]$OverwriteFile)     -Type DWord
+    Set-ItemProperty -Path $OldPortReg -Name "ChoosePath"        -Value ([int][bool]$ChoosePath)        -Type DWord
     Trace-Step "valores do registry atualizados"
 }
 
@@ -191,5 +194,6 @@ Log "  Padrao  : $OutputBaseName"
 Log "  Saida   : $OutputPath\"
 Log "  AbrirAposGerar      : $([int][bool]$OpenAfterGenerate)"
 Log "  SobrescreverArquivo : $([int][bool]$OverwriteFile)"
+Log "  EscolherDestino     : $([int][bool]$ChoosePath)"
 
 $LogWriter.Close()
