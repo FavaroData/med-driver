@@ -114,8 +114,8 @@ static void sanitize_doc_name(const WCHAR *src, WCHAR *dst, int cch) {
     dst[di] = 0;
 }
 
-// Varre o template em única passagem substituindo todos os tokens.
-// nStr pode ser o número formatado (ex: "003") ou L"*" para montar padrão glob.
+// Substitui tokens do template em uma única passagem pelo buffer de saída.
+// nStr aceita número formatado (ex: "003") ou L"*" quando chamado para montar padrão glob.
 static void apply_token_replacements(
     const WCHAR *tmpl, WCHAR *dst, int cchDst,
     const WCHAR *dateStr, const WCHAR *timeStr,
@@ -123,6 +123,8 @@ static void apply_token_replacements(
 {
     int di = 0;
     const WCHAR *p = tmpl;
+
+    // tabela de tokens fixos — evita uma cadeia de if/else por token
     struct { const WCHAR *token; const WCHAR *value; } fixed[3] = {
         { L"{data}",      dateStr },
         { L"{hora}",      timeStr },
@@ -130,8 +132,10 @@ static void apply_token_replacements(
     };
 
     while (*p && di < cchDst - 1) {
+        // char comum: copia direto e avança
         if (*p != L'{') { dst[di++] = *p++; continue; }
 
+        // tenta casar com cada token fixo
         BOOL matched = FALSE;
         for (int k = 0; k < 3 && !matched; k++) {
             int tlen = (int)wcslen(fixed[k].token);
@@ -144,7 +148,7 @@ static void apply_token_replacements(
         }
         if (matched) continue;
 
-        // {n+}: uma ou mais letras 'n' entre chaves
+        // {n}, {nn}, {nnn}...: conta quantos 'n' há entre as chaves para aceitar qualquer largura
         const WCHAR *q = p + 1;
         while (*q == L'n') q++;
         if (q > p + 1 && *q == L'}') {
@@ -212,20 +216,25 @@ static void resolve_template(PORT_CONTEXT *ctx) {
             apply_token_replacements(tmpl, globName, MAX_PATH,
                                      L"??????????", L"????????", safeDoc, L"*");
 
+            // padrão glob para FindFirstFileW: ex. "C:\PDFs\galilei_??????????_*.pdf"
+            // '?' cobre qualquer char de data/hora; '*' cobre o número do contador
             WCHAR globPattern[MAX_PATH];
             _snwprintf(globPattern, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, globName);
 
+            // prefixLen e suffixLen delimitam onde o número aparece dentro do nome do arquivo
+            // necessário para extrair só o dígito sem incluir texto fixo antes ou depois
             const WCHAR *star = wcschr(globName, L'*');
             int prefixLen = star ? (int)(star - globName) : 0;
             int suffixLen = star ? (int)wcslen(star + 1) : 0;
 
+            // percorre todos os arquivos correspondentes e rastreia o maior N encontrado
             int maxN = 0;
             WIN32_FIND_DATAW fd;
             HANDLE hFind = FindFirstFileW(globPattern, &fd);
             if (hFind != INVALID_HANDLE_VALUE) {
                 do {
                     int fnLen  = (int)wcslen(fd.cFileName);
-                    int pdfLen = 4;
+                    int pdfLen = 4; // desconta ".pdf"
                     int nStart = prefixLen;
                     int nEnd   = fnLen - pdfLen - suffixLen;
                     if (nEnd > nStart) {
@@ -238,6 +247,7 @@ static void resolve_template(PORT_CONTEXT *ctx) {
                 FindClose(hFind);
             }
 
+            // próximo job usa maxN+1, formatado conforme a largura do token ({n}, {nn}, {nnn}...)
             if (nWidth == 1)
                 _snwprintf(nStr, 16, L"%d", maxN + 1);
             else
@@ -249,10 +259,20 @@ static void resolve_template(PORT_CONTEXT *ctx) {
                                  dateStr, timeStr, safeDoc, nStr);
         _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, finalName);
     } else {
+        // template sem {n}: resolve o nome direto, sem escanear a pasta
         WCHAR finalName[MAX_PATH];
         apply_token_replacements(tmpl, finalName, MAX_PATH,
                                  dateStr, timeStr, safeDoc, L"");
         _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s.pdf", ctx->outputPath, finalName);
+
+        // se o arquivo já existe e overwriteFile=0, busca o próximo slot livre no padrão Windows
+        if (!ctx->overwriteFile && GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES) {
+            int copy = 1;
+            do {
+                _snwprintf(ctx->resolvedPath, MAX_PATH, L"%s\\%s (%d).pdf",
+                           ctx->outputPath, finalName, copy++);
+            } while (GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES);
+        }
     }
 
     LogDebug("resolve_template: %ls\n", ctx->resolvedPath);
@@ -260,7 +280,7 @@ static void resolve_template(PORT_CONTEXT *ctx) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Protocolo de comunicação com o MeddrivePrinterAgent via named pipe
+// Structs trocadas pelo pipe entre o Spooler (sessao 0) e o agente (sessao 1)
 typedef struct {
     WCHAR psTempPath[MAX_PATH];
     WCHAR outputPath[MAX_PATH];
@@ -272,26 +292,23 @@ typedef struct {
     WCHAR errorMsg[512];
 } PrintJobResponse;
 
-// Envia o job para o MeddrivePrinterAgent (roda na sessão do usuário com credenciais de rede)
-// e aguarda a resposta de forma síncrona.
-// Retorna TRUE se o GS terminou com exitCode=0, FALSE caso contrário.
+// Envia o job ao agente na sessao do usuario e aguarda o resultado de forma sincrona.
 static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
-    // obtém o SessionId da sessão interativa do console
-    // WTSGetActiveConsoleSessionId é mais confiável que ImpersonatePrinterClient
-    // no contexto do Spooler, pois winspool.drv não está carregado em spoolsv.exe
+    // WTSGetActiveConsoleSessionId funciona a partir da sessao 0 (Spooler).
+    // ImpersonatePrinterClient nao funciona aqui porque winspool.drv nao esta carregado em spoolsv.exe
     DWORD sessionId = WTSGetActiveConsoleSessionId();
     LogDebug("CallAgent: sessionId=%lu\n", sessionId);
 
-    // constrói o nome do pipe do agente para esta sessão
     WCHAR pipeName[64];
     _snwprintf(pipeName, 64, L"\\\\.\\pipe\\MeddrivePrinter_%lu", sessionId);
     LogDebug("CallAgent: conectando em %ls\n", pipeName);
 
-    // conecta ao pipe — falha imediata se o agente não estiver rodando
     HANDLE hPipe = CreateFileW(pipeName,
         GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (hPipe == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
+        // ERROR_PIPE_BUSY: o agente esta rodando mas ocupado com outro job.
+        // espera ate 5s e tenta de novo antes de desistir
         if (err == ERROR_PIPE_BUSY) {
             WaitNamedPipeW(pipeName, 5000);
             hPipe = CreateFileW(pipeName,
@@ -299,7 +316,8 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
         }
     }
     if (hPipe == INVALID_HANDLE_VALUE) {
-        LogDebug("CallAgent: pipe indisponivel err=%lu — agente nao esta rodando\n",
+        // agente nao esta rodando: cancela o job e avisa o usuario com uma caixa de dialogo
+        LogDebug("CallAgent: pipe indisponivel err=%lu, agente nao esta rodando\n",
             GetLastError());
         static const WCHAR title[] = L"Meddrive Printer";
         static const WCHAR msg[]   =
@@ -308,6 +326,8 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
             L"Verifique se a tarefa 'MeddrivePrinterAgent' esta ativa no Agendador de Tarefas "
             L"e faca login novamente para inicia-la.";
         DWORD response = 0;
+        // WTSSendMessageW exibe a caixa de dialogo na sessao do usuario (1) mesmo sendo chamado pelo Spooler (0).
+        // os parametros de tamanho sao em bytes, nao em caracteres, por isso o * sizeof(WCHAR)
         WTSSendMessageW(WTS_CURRENT_SERVER_HANDLE, sessionId,
             (LPWSTR)title, (DWORD)(wcslen(title) * sizeof(WCHAR)),
             (LPWSTR)msg,   (DWORD)(wcslen(msg)   * sizeof(WCHAR)),
@@ -315,7 +335,8 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
         return FALSE;
     }
 
-    // pipe disponível: resolve template e envia parâmetros ao agente
+    // resolve o template so depois de confirmar que o pipe esta disponivel,
+    // assim nao escaneia a pasta de saida para um job que seria cancelado de qualquer forma
     resolve_template(ctx);
     PrintJobMsg msg = {0};
     wcscpy_s(msg.psTempPath, MAX_PATH, ctx->tempPsFile);
@@ -325,7 +346,7 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
     WriteFile(hPipe, &msg, sizeof(msg), &written, NULL);
     LogDebug("CallAgent: msg enviada (%lu bytes)\n", written);
 
-    // aguarda resposta do agente (bloqueante — o agente roda o GS e responde)
+    // ReadFile bloqueia ate o agente terminar o GS e escrever a resposta no pipe
     PrintJobResponse resp = {0};
     DWORD bytesRead = 0;
     ReadFile(hPipe, &resp, sizeof(resp), &bytesRead, NULL);

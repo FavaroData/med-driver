@@ -26,7 +26,9 @@ Este instalador irá configurar:$\r$\n\
   • Monitor de impressão (meddrivemon.dll)$\r$\n\
   • Driver PSCRIPT5 customizado$\r$\n\
   • Ghostscript (motor de conversão PDF)$\r$\n\
-  • Aplicativo de gerenciamento MedDriveManager$\r$\n$\r$\n\
+  • Aplicativo de gerenciamento MedDriveManager$\r$\n\
+  • Agente de sessão MeddrivePrinterAgent$\r$\n$\r$\n\
+Após a instalação, use o MedDriveManager para criar perfis e impressoras.$\r$\n$\r$\n\
 Clique em Avançar para continuar."
 
 ; ---------- páginas ----------
@@ -74,6 +76,8 @@ Function PgPaths
     StrCpy $R4 "$R4  $R3\conf\edit-printer.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\remove-printer.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\remove-profile.ps1$\r$\n"
+    StrCpy $R4 "$R4$\r$\nAgente de sessao:$\r$\n"
+    StrCpy $R4 "$R4  $R3\MeddrivePrinterAgent.exe$\r$\n"
     StrCpy $R4 "$R4$\r$\nGhostscript (motor PDF):$\r$\n"
     StrCpy $R4 "$R4  $R3\Ghostscript\"
     SendMessage $hEditPaths ${WM_SETTEXT} 0 "STR:$R4"

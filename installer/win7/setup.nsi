@@ -7,6 +7,7 @@ Unicode True
 
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "nsDialogs.nsh"
 
 ; ---------- metadados ----------
 Name          "Meddrive Printer"
@@ -32,10 +33,63 @@ Clique em Avançar para continuar."
 !define MUI_ABORTWARNING
 
 !insertmacro MUI_PAGE_WELCOME
+Page custom PgPaths PgPathsLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "PortugueseBR"
+
+; ---------- página: caminhos de instalação ----------
+Var hDlg
+Var hEditPaths
+
+Function PgPaths
+    !insertmacro MUI_HEADER_TEXT \
+        "Caminhos de instalação" \
+        "Revise os locais onde os componentes serão instalados."
+
+    nsDialogs::Create 1018
+    Pop $hDlg
+
+    ; Caixa de texto read-only com os caminhos
+    ReadEnvStr $R0 "SystemRoot"
+    ReadEnvStr $R1 "ProgramData"
+    StrCpy $R2 "$R0\System32"
+    StrCpy $R3 "$R1\Meddrive Printer"
+
+    ; ES_MULTILINE|ES_READONLY|WS_VSCROLL|WS_CHILD|WS_VISIBLE|WS_BORDER
+    ; 0x00000004|0x00000800|0x00200000|0x40000000|0x10000000|0x00800000 = 0x50A00804
+    nsDialogs::CreateControl "EDIT" 0x50A00804 0 0 0 100% 130u ""
+    Pop $hEditPaths
+
+    StrCpy $R4 "Monitor e DLL do Spooler:$\r$\n"
+    StrCpy $R4 "$R4  $R2\meddrivemon.dll$\r$\n"
+    StrCpy $R4 "$R4$\r$\nDriver PSCRIPT5 e PPD:$\r$\n"
+    StrCpy $R4 "$R4  $R2\spool\drivers\x64\3\$\r$\n"
+    StrCpy $R4 "$R4$\r$\nAplicativo de gerenciamento:$\r$\n"
+    StrCpy $R4 "$R4  $R3\MedDriveManager.exe$\r$\n"
+    StrCpy $R4 "$R4  $R3\conf\add-printer.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\conf\create-profile.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\conf\edit-profile.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\conf\edit-printer.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\conf\remove-printer.ps1$\r$\n"
+    StrCpy $R4 "$R4  $R3\conf\remove-profile.ps1$\r$\n"
+    StrCpy $R4 "$R4$\r$\nGhostscript 9.56.1 (motor PDF):$\r$\n"
+    StrCpy $R4 "$R4  $R3\Ghostscript\"
+    SendMessage $hEditPaths ${WM_SETTEXT} 0 "STR:$R4"
+
+    ; Renomeia o botão Próximo para "Instalar"
+    GetDlgItem $0 $HWNDPARENT 1
+    SendMessage $0 ${WM_SETTEXT} 0 "STR:Instalar"
+
+    nsDialogs::Show
+FunctionEnd
+
+Function PgPathsLeave
+    ; Restaura o texto padrão do botão (não é necessário, mas mantém consistência)
+    GetDlgItem $0 $HWNDPARENT 1
+    SendMessage $0 ${WM_SETTEXT} 0 "STR:Avançar >"
+FunctionEnd
 
 ; ---------- macro: copia DLL para System32 se ausente ----------
 !macro InstallDllIfMissing DLL_NAME
