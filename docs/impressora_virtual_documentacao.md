@@ -1,5 +1,5 @@
 # Meddrive Printer — Documentação Técnica
-**v2.8 · Junho 2026**
+**v3.4 · Junho 2026**
 
 ---
 
@@ -69,21 +69,22 @@ meddrivemon.dll — WritePort()
 acumula os bytes PS em arquivo temporário (C:\Windows\Temp\*.tmp)
         ↓
 EndDocPort()
-resolve o nome do arquivo de saída (template + numeração)
 obtém a sessão interativa via WTSGetActiveConsoleSessionId()
 conecta ao named pipe \\.\pipe\MeddrivePrinter_<sessionId>
-envia PrintJobMsg { tempPsPath, outputPdfPath, gsPath }
-aguarda PrintJobResponse { exitCode }
+envia PrintJobMsg { tempPsPath, outputPath, outputBaseName, docName, gsPath }
+aguarda PrintJobResponse { exitCode, outputPath }
         ↓
 MeddrivePrinterAgent.exe  [usuário logado — sessão 1]
 recebe o job pelo pipe
+resolve o nome final do PDF (template + numeração, com acesso a pastas de rede)
 executa: gswin64c.exe -dBATCH -dNOPAUSE -sDEVICE=pdfwrite
                       -sOutputFile=saida.pdf arquivo.tmp
-aguarda o GS terminar e envia o exitCode de volta
+confirma que o PDF foi gravado (GetFileAttributesW)
+se OpenAfterGenerate: ShellExecuteW para abrir o PDF
+devolve PrintJobResponse { exitCode, outputPath }
         ↓
 meddrivemon.dll
 recebe exitCode — se erro: mostra mensagem ao usuário (WTSSendMessage)
-se OpenAfterGenerate: ShellExecuteW para abrir o PDF
 deleta o arquivo .tmp temporário
         ↓
 PDF salvo na pasta configurada (pode ser pasta de rede \\servidor\pasta)
@@ -118,7 +119,7 @@ Cada impressora cadastrada via MedDriveManager é associada a um **perfil**, que
 ### 4.3 Estratégia de conflito
 
 Quando `OverwriteFile = 0` (incrementar):
-- O DLL escaneia a pasta com `FindFirstFileW`/`FindNextFileW`
+- O agente escaneia a pasta com `FindFirstFileW`/`FindNextFileW` (roda com credenciais do usuário, acessa pastas de rede)
 - Extrai o maior N existente e usa `maxN + 1`
 - Resultado: `relatorio-1.pdf`, `relatorio-2.pdf`, etc.
 
@@ -130,10 +131,12 @@ Quando `OverwriteFile = 1` (sobrescrever):
 
 ```
 HKLM\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR\Ports\Meddrive Printer PORT <nome>
-    OutputPath      = "C:\PDF\"
-    OutputBaseName  = "relatorio"
-    GhostscriptPath = "C:\ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
-    OverwriteFile   = 0   (DWORD — 0=incrementar, 1=sobrescrever)
+    OutputPath        = "C:\PDF\"
+    OutputBaseName    = "{documento}_{data}"
+    GhostscriptPath   = "C:\ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+    OverwriteFile     = 0   (DWORD — 0=incrementar, 1=sobrescrever)
+    OpenAfterGenerate = 0   (DWORD — 1=abrir PDF no visualizador após gerar)
+    ChoosePath        = 0   (DWORD — 1=exibir diálogo "Salvar como" antes de converter)
 ```
 
 > **Retrocompatibilidade:** portas criadas antes da v1.5 sem `OutputBaseName` usam `"saida"` como fallback.
@@ -215,7 +218,7 @@ O Spooler roda como `SYSTEM` na sessão 0 — sem credenciais de rede do usuári
 - O `MeddrivePrinterAgent.exe` é registrado no Task Scheduler com `TASK_TRIGGER_LOGON` e `TASK_LOGON_INTERACTIVE_TOKEN` — inicia automaticamente na sessão interativa de qualquer usuário que faça login.
 - O agente cria um named pipe `\\.\pipe\MeddrivePrinter_<SessionId>` com NULL DACL (acesso total local — necessário para que o SYSTEM do Spooler consiga conectar).
 - A DLL localiza a sessão interativa com `WTSGetActiveConsoleSessionId()` e conecta ao pipe correspondente. Se o agente não estiver rodando, exibe uma mensagem de erro via `WTSSendMessage` na sessão do usuário e cancela o job.
-- A comunicação é síncrona: a DLL envia `PrintJobMsg` (paths do PS temporário, PDF de saída e gswin64c.exe), aguarda `PrintJobResponse` (exitCode + mensagem de erro), fecha a conexão.
+- A comunicação é síncrona: a DLL envia `PrintJobMsg` (path do PS temporário, pasta de destino, template de nome, nome do documento e gswin64c.exe), aguarda `PrintJobResponse` (exitCode + path final do PDF), fecha a conexão. A resolução do nome (template + numeração) é feita pelo agente, que tem acesso às credenciais de rede do usuário.
 - O agente executa o Ghostscript via `CreateProcessW` e devolve o resultado. A pasta de rede é acessível porque o processo roda com o token do usuário.
 
 **Limitação atual:** suporte ao agente implementado apenas para Win10/11. Win7/Vista instalam sem o agente e só funcionam com pastas locais.
@@ -253,9 +256,9 @@ med-driver/
 │   ├── monitor.c          — implementação do port monitor (MONITOR2)
 │   ├── monitor.h          — defines: MONITOR_NAME, PORT_CONTEXT
 │   └── monitor.def        — exports da DLL
-├── agent/
-│   ├── MeddrivePrinterAgent.c   — agente de sessão de usuário (pipe + GS)
-│   └── MeddrivePrinterAgent.exe — binário compilado
+│   └── agent/
+│       ├── MeddrivePrinterAgent.c   — agente de sessão de usuário (pipe + GS)
+│       └── MeddrivePrinterAgent.exe — binário compilado
 ├── gui-native/
 │   └── MedDriveManager/
 │       ├── src/
@@ -328,7 +331,7 @@ bash build.sh
 
 Gera:
 - `meddrivemon.dll` — DLL cross-compilada (x86_64-w64-mingw32-gcc)
-- `agent/MeddrivePrinterAgent.exe` — agente de sessão
+- `src/agent/MeddrivePrinterAgent.exe` — agente de sessão
 - `installer/win10-11/x64/Debug/MedDriveManager.exe` — GUI
 - `MeddrivePrinter-Setup.exe` — instalador Win10/11
 - `MeddrivePrinter-Win7-Setup.exe` — instalador Win7
