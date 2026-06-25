@@ -11,8 +11,8 @@ param(
     [switch]$ChoosePath
 )
 
-$LogFile   = "C:\Windows\Temp\meddrive_ps_editprofile.log"
-$LogWriter = New-Object System.IO.StreamWriter($LogFile, $false, [System.Text.Encoding]::Unicode)
+$LogFile   = "C:\Windows\Temp\meddrive_manager.log"
+$LogWriter = New-Object System.IO.StreamWriter($LogFile, $true, [System.Text.Encoding]::Unicode)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Log($msg) {
@@ -31,6 +31,8 @@ trap {
 }
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
+Log ""
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] edit-profile: $ProfileName ==="
 Trace-Step "inicio do script"
 
 if (-not $ProfileName)    { Log "ERRO: parametro -ProfileName e obrigatorio.";    $LogWriter.Close(); exit 1 }

@@ -5,8 +5,8 @@ param(
     [string]$PrinterName = "Meddrive Printer"
 )
 
-$LogFile   = "C:\Windows\Temp\meddrive_ps_removeprinter.log"
-$LogWriter = New-Object System.IO.StreamWriter($LogFile, $false, [System.Text.Encoding]::Unicode)
+$LogFile   = "C:\Windows\Temp\meddrive_manager.log"
+$LogWriter = New-Object System.IO.StreamWriter($LogFile, $true, [System.Text.Encoding]::Unicode)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Log($msg) {
@@ -25,6 +25,8 @@ trap {
 }
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
+Log ""
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] remove-printer: $PrinterName ==="
 Trace-Step "inicio do script"
 
 $ErrorActionPreference = "Stop"

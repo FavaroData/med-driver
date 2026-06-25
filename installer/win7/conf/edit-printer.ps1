@@ -8,8 +8,8 @@ param(
     [Parameter(Mandatory=$true)] [string]$ProfileName
 )
 
-$LogFile   = "C:\Windows\Temp\meddrive_ps_editprinter.log"
-$LogWriter = New-Object System.IO.StreamWriter($LogFile, $false, [System.Text.Encoding]::Unicode)
+$LogFile   = "C:\Windows\Temp\meddrive_manager.log"
+$LogWriter = New-Object System.IO.StreamWriter($LogFile, $true, [System.Text.Encoding]::Unicode)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Log($msg) {
@@ -26,6 +26,9 @@ trap {
     $LogWriter.Close()
     exit 1
 }
+
+Log ""
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] edit-printer: $OldPrinterName -> $NewPrinterName (perfil: $ProfileName) ==="
 
 $ErrorActionPreference = "Stop"
 

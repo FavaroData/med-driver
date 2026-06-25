@@ -12,8 +12,8 @@ param(
     [switch]$ChoosePath
 )
 
-$LogFile   = "C:\Windows\Temp\meddrive_ps_createprofile.log"
-$LogWriter = [System.IO.StreamWriter]::new($LogFile, $false, [System.Text.Encoding]::Unicode)
+$LogFile   = "C:\Windows\Temp\meddrive_manager.log"
+$LogWriter = [System.IO.StreamWriter]::new($LogFile, $true, [System.Text.Encoding]::Unicode)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 function Log($msg) {
@@ -32,8 +32,9 @@ trap {
 }
 function Trace-Step($msg) { Log "CHECKPOINT: $msg" }
 
+Log ""
+Log "=== [$(Get-Date -Format 'HH:mm:ss')] create-profile: $ProfileName ==="
 Trace-Step "inicio do script"
-Trace-Step "LogWriter OK"
 
 if (-not $ProfileName) {
     Log "ERRO: parâmetro -ProfileName é obrigatório."
