@@ -260,7 +260,8 @@ static void on_new_profile(HWND hwnd) {
                                      entry.outputPath,
                                      entry.outputBaseName,
                                      (BOOL)entry.openAfterGenerate,
-                                     (BOOL)entry.overwriteFile)) return;
+                                     (BOOL)entry.overwriteFile,
+                                     (BOOL)entry.choosePath)) return;
     load_profiles();
     profile_refresh();
 }
@@ -302,7 +303,8 @@ static void on_edit_profile(HWND hwnd) {
                                    edited.outputPath,
                                    edited.outputBaseName,
                                    (BOOL)edited.openAfterGenerate,
-                                   (BOOL)edited.overwriteFile)) return;
+                                   (BOOL)edited.overwriteFile,
+                                   (BOOL)edited.choosePath)) return;
     load_profiles();
     profile_refresh();
     sync_with_system();
@@ -324,7 +326,8 @@ static void on_dup_profile(HWND hwnd) {
                                      result.outputPath,
                                      result.outputBaseName,
                                      (BOOL)result.openAfterGenerate,
-                                     (BOOL)result.overwriteFile)) return;
+                                     (BOOL)result.overwriteFile,
+                                     (BOOL)result.choosePath)) return;
     load_profiles();
     profile_refresh();
 }

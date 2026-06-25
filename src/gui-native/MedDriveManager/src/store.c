@@ -57,6 +57,8 @@ int profile_load(ProfileEntry **out) {
             RegQueryValueExW(hPort, L"OpenAfterGenerate", NULL, &type, (BYTE *)&e->openAfterGenerate, &sz);
             sz = sizeof(DWORD);
             RegQueryValueExW(hPort, L"OverwriteFile",     NULL, &type, (BYTE *)&e->overwriteFile,     &sz);
+            sz = sizeof(DWORD);
+            RegQueryValueExW(hPort, L"ChoosePath",        NULL, &type, (BYTE *)&e->choosePath,        &sz);
             RegCloseKey(hPort);
         }
         count++;

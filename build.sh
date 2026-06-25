@@ -54,7 +54,7 @@ echo "  -> $OUT/MedDriveManager.exe"
 echo "=== Compilando MeddrivePrinterAgent.exe ==="
 $MINGW-gcc -mwindows -DUNICODE -D_UNICODE -DWINVER=0x0600 -D_WIN32_WINNT=0x0600 \
     "$PROJ_ROOT/src/agent/MeddrivePrinterAgent.c" \
-    -ladvapi32 -lshell32 \
+    -ladvapi32 -lshell32 -lcomdlg32 \
     -o "$PROJ_ROOT/src/agent/MeddrivePrinterAgent.exe"
 echo "  -> $PROJ_ROOT/src/agent/MeddrivePrinterAgent.exe"
 

@@ -19,6 +19,7 @@ typedef struct {
     wchar_t outputBaseName[PRINTER_BASENAME_MAX];
     DWORD   openAfterGenerate;
     DWORD   overwriteFile;
+    DWORD   choosePath;
 } ProfileEntry;
 
 void store_free(PrinterEntry *entries);

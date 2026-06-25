@@ -18,7 +18,8 @@ BOOL dlg_progress_create_profile(HWND parent,
                                   const wchar_t *outputPath,
                                   const wchar_t *outputBaseName,
                                   BOOL openAfterGenerate,
-                                  BOOL overwriteFile);
+                                  BOOL overwriteFile,
+                                  BOOL choosePath);
 
 /* Lanca edit-profile.ps1. newProfileName pode ser igual a profileName (sem renomear). */
 BOOL dlg_progress_edit_profile(HWND parent,
@@ -27,7 +28,8 @@ BOOL dlg_progress_edit_profile(HWND parent,
                                 const wchar_t *outputPath,
                                 const wchar_t *outputBaseName,
                                 BOOL openAfterGenerate,
-                                BOOL overwriteFile);
+                                BOOL overwriteFile,
+                                BOOL choosePath);
 
 /* Lanca remove-profile.ps1. */
 BOOL dlg_progress_remove_profile(HWND parent, const wchar_t *profileName);

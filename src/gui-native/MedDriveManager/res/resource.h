@@ -59,3 +59,4 @@
 #define IDC_BTN_PROFILE_BROWSE     306
 #define IDC_CHK_OPEN_AFTER         307
 #define IDC_CHK_OVERWRITE          308
+#define IDC_CHK_CHOOSE_PATH        309

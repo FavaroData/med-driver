@@ -72,8 +72,10 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
     RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &size);
     size = sizeof(DWORD);
     RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &size);
-    LogDebug("ReadConfig: OpenAfterGenerate=%lu OverwriteFile=%lu\n",
-        ctx->openAfterGenerate, ctx->overwriteFile);
+    size = sizeof(DWORD);
+    RegQueryValueExW(hKey, L"ChoosePath",        NULL, NULL, (LPBYTE)&ctx->choosePath,        &size);
+    LogDebug("ReadConfig: OpenAfterGenerate=%lu OverwriteFile=%lu ChoosePath=%lu\n",
+        ctx->openAfterGenerate, ctx->overwriteFile, ctx->choosePath);
 
     // fecha a chave do registry, retorna TRUE se ambos os caminhos foram lidos com sucesso, FALSE caso contrário
     RegCloseKey(hKey);
@@ -285,15 +287,20 @@ typedef struct {
     WCHAR outputPath[MAX_PATH];
     WCHAR gsPath[MAX_PATH];
     DWORD openAfterGenerate;
+    DWORD choosePath;
 } PrintJobMsg;
 
 typedef struct {
     DWORD exitCode;
     WCHAR errorMsg[512];
+    WCHAR outputPath[MAX_PATH];
+    DWORD userCancelled;
 } PrintJobResponse;
 
 // Envia o job ao agente na sessao do usuario e aguarda o resultado de forma sincrona.
-static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
+// pCancelled é preenchido com TRUE se o usuario cancelou o dialogo de salvar.
+static BOOL CallAgentForConversion(PORT_CONTEXT *ctx, BOOL *pCancelled) {
+    *pCancelled = FALSE;
     // WTSGetActiveConsoleSessionId funciona a partir da sessao 0 (Spooler).
     // ImpersonatePrinterClient nao funciona aqui porque winspool.drv nao esta carregado em spoolsv.exe
     DWORD sessionId = WTSGetActiveConsoleSessionId();
@@ -337,23 +344,36 @@ static BOOL CallAgentForConversion(PORT_CONTEXT *ctx) {
 
     // resolve o template so depois de confirmar que o pipe esta disponivel,
     // assim nao escaneia a pasta de saida para um job que seria cancelado de qualquer forma
+    // quando choosePath esta ativo, o agente resolve o caminho via dialogo;
+    // o template ainda e resolvido para fornecer o nome sugerido no dialogo
     resolve_template(ctx);
     PrintJobMsg msg = {0};
     wcscpy_s(msg.psTempPath, MAX_PATH, ctx->tempPsFile);
     wcscpy_s(msg.outputPath, MAX_PATH, ctx->resolvedPath);
     wcscpy_s(msg.gsPath,     MAX_PATH, ctx->ghostscriptPath);
     msg.openAfterGenerate = ctx->openAfterGenerate;
+    msg.choosePath        = ctx->choosePath;
     DWORD written = 0;
     WriteFile(hPipe, &msg, sizeof(msg), &written, NULL);
     LogDebug("CallAgent: msg enviada (%lu bytes)\n", written);
 
-    // ReadFile bloqueia ate o agente terminar o GS e escrever a resposta no pipe
     PrintJobResponse resp = {0};
     DWORD bytesRead = 0;
     ReadFile(hPipe, &resp, sizeof(resp), &bytesRead, NULL);
     CloseHandle(hPipe);
 
-    LogDebug("CallAgent: exitCode=%lu msg=%ls\n", resp.exitCode, resp.errorMsg);
+    if (resp.userCancelled) {
+        *pCancelled = TRUE;
+        LogDebug("CallAgent: usuario cancelou o dialogo\n");
+        return FALSE;
+    }
+
+    // atualiza resolvedPath com o caminho real usado pelo agente
+    // (pode diferir quando choosePath esta ativo)
+    if (resp.outputPath[0] != L'\0')
+        wcscpy_s(ctx->resolvedPath, MAX_PATH, resp.outputPath);
+
+    LogDebug("CallAgent: exitCode=%lu path=%ls\n", resp.exitCode, ctx->resolvedPath);
     return resp.exitCode == 0;
 }
 
@@ -537,6 +557,8 @@ static BOOL WINAPI Monitor_StartDocPort(
             RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &sz);
             sz = sizeof(DWORD);
             RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &sz);
+            sz = sizeof(DWORD);
+            RegQueryValueExW(hKey, L"ChoosePath",        NULL, NULL, (LPBYTE)&ctx->choosePath,        &sz);
             RegCloseKey(hKey);
         }
     }
@@ -639,21 +661,23 @@ static DWORD WINAPI delete_job_thread(LPVOID param) {
 
 static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
-    BOOL ok;
 
     CloseHandle(ctx->hTempFile);
     ctx->hTempFile = INVALID_HANDLE_VALUE;
     LogDebug("EndDocPort: arquivo=%ls\n", ctx->tempPsFile);
 
-    ok = CallAgentForConversion(ctx);
-    LogDebug("EndDocPort: agente=%s\n", ok ? "OK" : "FALHOU");
+    BOOL cancelled = FALSE;
+    BOOL ok = CallAgentForConversion(ctx, &cancelled);
+    LogDebug("EndDocPort: agente=%s cancelled=%d\n", ok ? "OK" : "FALHOU", cancelled);
     DeleteFileW(ctx->tempPsFile);
 
-    if (ok)
-        ok = (GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES);
-    LogDebug("EndDocPort: PDF=%s path=%ls\n", ok ? "OK" : "NAO ENCONTRADO", ctx->resolvedPath);
-
     if (ok) {
+        ok = (GetFileAttributesW(ctx->resolvedPath) != INVALID_FILE_ATTRIBUTES);
+        LogDebug("EndDocPort: PDF=%s path=%ls\n", ok ? "OK" : "NAO ENCONTRADO", ctx->resolvedPath);
+    }
+
+    // remove o job da fila em caso de sucesso ou cancelamento pelo usuario
+    if (ok || cancelled) {
         DeleteJobCtx *j = HeapAlloc(GetProcessHeap(), 0, sizeof(DeleteJobCtx));
         if (j) {
             wcsncpy_s(j->printerName, 256, ctx->printerName, _TRUNCATE);
@@ -662,6 +686,7 @@ static BOOL WINAPI Monitor_EndDocPort(HANDLE hPort) {
             if (t) CloseHandle(t);
             else HeapFree(GetProcessHeap(), 0, j);
         }
+        if (cancelled) ok = TRUE;
     }
 
     return ok;

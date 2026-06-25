@@ -14,6 +14,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
+#include <commdlg.h>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -25,11 +26,14 @@ typedef struct {
     WCHAR outputPath[MAX_PATH];
     WCHAR gsPath[MAX_PATH];
     DWORD openAfterGenerate;
+    DWORD choosePath;
 } PrintJobMsg;
 
 typedef struct {
     DWORD exitCode;
     WCHAR errorMsg[512];
+    WCHAR outputPath[MAX_PATH];
+    DWORD userCancelled;
 } PrintJobResponse;
 
 static void Log(const char *fmt, ...) {
@@ -98,9 +102,38 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
             CloseHandle(hPipe);
             continue;
         }
-        Log("[agent] job: ps=%ls out=%ls\n", msg.psTempPath, msg.outputPath);
+        Log("[agent] job: ps=%ls out=%ls choosePath=%lu\n",
+            msg.psTempPath, msg.outputPath, msg.choosePath);
 
         PrintJobResponse resp = {0};
+
+        if (msg.choosePath) {
+            WCHAR szFile[MAX_PATH];
+            wcsncpy_s(szFile, MAX_PATH, msg.outputPath, _TRUNCATE);
+
+            OPENFILENAMEW ofn = {0};
+            ofn.lStructSize = sizeof(ofn);
+            ofn.lpstrFilter = L"Arquivos PDF (*.pdf)\0*.pdf\0";
+            ofn.lpstrFile   = szFile;
+            ofn.nMaxFile    = MAX_PATH;
+            ofn.lpstrTitle  = L"Salvar PDF";
+            ofn.lpstrDefExt = L"pdf";
+            ofn.Flags       = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST;
+
+            if (!GetSaveFileNameW(&ofn)) {
+                Log("[agent] usuario cancelou o dialogo\n");
+                resp.userCancelled = 1;
+                DWORD w = 0;
+                WriteFile(hPipe, &resp, sizeof(resp), &w, NULL);
+                FlushFileBuffers(hPipe);
+                DisconnectNamedPipe(hPipe);
+                CloseHandle(hPipe);
+                continue;
+            }
+            wcsncpy_s(msg.outputPath, MAX_PATH, szFile, _TRUNCATE);
+            Log("[agent] caminho escolhido: %ls\n", msg.outputPath);
+        }
+
         WCHAR cmdLine[2048];
         _snwprintf(cmdLine, 2048,
             L"\"%s\" -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=\"%s\" \"%s\"",
@@ -129,6 +162,8 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
             if (resp.exitCode == 0 && msg.openAfterGenerate)
                 ShellExecuteW(NULL, L"open", msg.outputPath, NULL, NULL, SW_SHOWNORMAL);
         }
+
+        wcsncpy_s(resp.outputPath, MAX_PATH, msg.outputPath, _TRUNCATE);
 
         DWORD bytesWritten = 0;
         WriteFile(hPipe, &resp, sizeof(resp), &bytesWritten, NULL);

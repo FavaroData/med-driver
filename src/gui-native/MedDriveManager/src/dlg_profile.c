@@ -179,6 +179,8 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 params->prefill->openAfterGenerate ? BST_CHECKED : BST_UNCHECKED);
             CheckDlgButton(hwnd, IDC_CHK_OVERWRITE,
                 params->prefill->overwriteFile ? BST_CHECKED : BST_UNCHECKED);
+            CheckDlgButton(hwnd, IDC_CHK_CHOOSE_PATH,
+                params->prefill->choosePath ? BST_CHECKED : BST_UNCHECKED);
         }
 
         make_btn_ownerdraw(hwnd, IDOK);
@@ -225,8 +227,9 @@ static INT_PTR CALLBACK DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             GetDlgItemTextW(hwnd, IDC_EDIT_PROFILE_NAME,     s_entry->name,           PRINTER_NAME_MAX);
             GetDlgItemTextW(hwnd, IDC_EDIT_PROFILE_BASENAME, s_entry->outputBaseName, PRINTER_BASENAME_MAX);
             GetDlgItemTextW(hwnd, IDC_EDIT_PROFILE_PATH,     s_entry->outputPath,     PRINTER_PATH_MAX);
-            s_entry->openAfterGenerate = (IsDlgButtonChecked(hwnd, IDC_CHK_OPEN_AFTER) == BST_CHECKED) ? 1 : 0;
-            s_entry->overwriteFile     = (IsDlgButtonChecked(hwnd, IDC_CHK_OVERWRITE)  == BST_CHECKED) ? 1 : 0;
+            s_entry->openAfterGenerate = (IsDlgButtonChecked(hwnd, IDC_CHK_OPEN_AFTER)   == BST_CHECKED) ? 1 : 0;
+            s_entry->overwriteFile     = (IsDlgButtonChecked(hwnd, IDC_CHK_OVERWRITE)    == BST_CHECKED) ? 1 : 0;
+            s_entry->choosePath        = (IsDlgButtonChecked(hwnd, IDC_CHK_CHOOSE_PATH)  == BST_CHECKED) ? 1 : 0;
 
             if (s_entry->name[0] == L'\0') {
                 MessageBoxW(hwnd, L"O nome do perfil não pode estar vazio.",

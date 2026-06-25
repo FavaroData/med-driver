@@ -25,6 +25,7 @@ typedef struct {
     wchar_t      outputBaseName[256];
     BOOL         openAfterGenerate;
     BOOL         overwriteFile;
+    BOOL         choosePath;
 } ProgressParams;
 
 static BOOL         s_done;
@@ -122,10 +123,11 @@ static DWORD WINAPI ps_thread_create_profile(LPVOID param) {
     wchar_t cmd[4096];
     _snwprintf_s(cmd, 4096, _TRUNCATE,
         L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
-        L" -ProfileName \"%s\" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s",
+        L" -ProfileName \"%s\" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s%s",
         p->scriptPath, p->printerName, p->outputPath, p->outputBaseName,
         p->openAfterGenerate ? L" -OpenAfterGenerate" : L"",
-        p->overwriteFile     ? L" -OverwriteFile"     : L"");
+        p->overwriteFile     ? L" -OverwriteFile"     : L"",
+        p->choosePath        ? L" -ChoosePath"        : L"");
     DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
     return r;
@@ -137,11 +139,12 @@ static DWORD WINAPI ps_thread_edit_profile(LPVOID param) {
     _snwprintf_s(cmd, 4096, _TRUNCATE,
         L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
         L" -ProfileName \"%s\" -NewName \"%s\""
-        L" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s",
+        L" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s%s",
         p->scriptPath, p->profileName, p->newProfileName,
         p->outputPath, p->outputBaseName,
         p->openAfterGenerate ? L" -OpenAfterGenerate" : L"",
-        p->overwriteFile     ? L" -OverwriteFile"     : L"");
+        p->overwriteFile     ? L" -OverwriteFile"     : L"",
+        p->choosePath        ? L" -ChoosePath"        : L"");
     DWORD r = run_ps(p, cmd);
     HeapFree(GetProcessHeap(), 0, p);
     return r;
@@ -408,7 +411,8 @@ BOOL dlg_progress_edit_profile(HWND parent,
                                 const wchar_t *outputPath,
                                 const wchar_t *outputBaseName,
                                 BOOL openAfterGenerate,
-                                BOOL overwriteFile) {
+                                BOOL overwriteFile,
+                                BOOL choosePath) {
     wchar_t scriptPath[MAX_PATH];
     build_script_path(scriptPath, L"edit-profile.ps1");
 
@@ -431,6 +435,7 @@ BOOL dlg_progress_edit_profile(HWND parent,
     params->mode              = MODE_EDIT_PROFILE;
     params->openAfterGenerate = openAfterGenerate;
     params->overwriteFile     = overwriteFile;
+    params->choosePath        = choosePath;
 
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
     INT_PTR result = DialogBoxParamW(hInst,
@@ -504,7 +509,8 @@ BOOL dlg_progress_create_profile(HWND parent,
                                   const wchar_t *outputPath,
                                   const wchar_t *outputBaseName,
                                   BOOL openAfterGenerate,
-                                  BOOL overwriteFile) {
+                                  BOOL overwriteFile,
+                                  BOOL choosePath) {
     wchar_t scriptPath[MAX_PATH];
     build_script_path(scriptPath, L"create-profile.ps1");
 
@@ -526,6 +532,7 @@ BOOL dlg_progress_create_profile(HWND parent,
     params->mode              = MODE_CREATE_PROFILE;
     params->openAfterGenerate = openAfterGenerate;
     params->overwriteFile     = overwriteFile;
+    params->choosePath        = choosePath;
 
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
     INT_PTR result = DialogBoxParamW(hInst,

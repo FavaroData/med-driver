@@ -51,7 +51,7 @@ BEGIN
     DEFPUSHBUTTON   "Adicionar",            IDOK,                 240, 190,  68,  16
 END
 
-IDD_ADD_PROFILE DIALOGEX 0, 0, 320, 217
+IDD_ADD_PROFILE DIALOGEX 0, 0, 320, 230
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Novo Perfil"
 FONT 9, "Segoe UI", 400, 0, 0x1
@@ -75,12 +75,13 @@ BEGIN
 
     /* ── Seção: Opções ── */
     LTEXT           "OPÇÕES",              IDC_SECTION_LBL,         12, 143, 296,  9
-    AUTOCHECKBOX    "Abrir PDF após gerar",               IDC_CHK_OPEN_AFTER, 12, 156, 148, 10
-    AUTOCHECKBOX    "Sobrescrever arquivo existente",     IDC_CHK_OVERWRITE,  12, 169, 160, 10
+    AUTOCHECKBOX    "Abrir PDF após gerar",               IDC_CHK_OPEN_AFTER,  12, 156, 148, 10
+    AUTOCHECKBOX    "Sobrescrever arquivo existente",     IDC_CHK_OVERWRITE,   12, 169, 160, 10
+    AUTOCHECKBOX    "Escolher destino ao imprimir",       IDC_CHK_CHOOSE_PATH, 12, 182, 170, 10
 
     /* ── Rodapé ── */
-    PUSHBUTTON      "Cancelar",            IDCANCEL,               168, 197,  68,  16
-    DEFPUSHBUTTON   "Salvar",              IDOK,                   240, 197,  68,  16
+    PUSHBUTTON      "Cancelar",            IDCANCEL,               168, 210,  68,  16
+    DEFPUSHBUTTON   "Salvar",              IDOK,                   240, 210,  68,  16
 END
 
 IDD_PROGRESS DIALOGEX 0, 0, 420, 232
