@@ -9,7 +9,7 @@ $PortName   = "Meddrive Printer PORT $ProfileName"
 $MonitorReg = "HKLM:\SYSTEM\CurrentControlSet\Control\Print\Monitors\Meddrive Printer MONITOR"
 $PortReg    = "$MonitorReg\Ports\$PortName"
 
-$LogFile   = "C:\Windows\Temp\meddrive_manager.log"
+$LogFile   = "C:\Windows\Temp\meddrive_printer_manager.log"
 $LogWriter = [System.IO.StreamWriter]::new($LogFile, $true, [System.Text.Encoding]::Unicode)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 

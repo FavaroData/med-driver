@@ -6,7 +6,7 @@ param(
     [string]$PrinterName = "Meddrive Printer"
 )
 
-$LogFile   = "C:\Windows\Temp\meddrive_manager.log"
+$LogFile   = "C:\Windows\Temp\meddrive_printer_manager.log"
 $LogWriter = New-Object System.IO.StreamWriter($LogFile, $true, [System.Text.Encoding]::Unicode)
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
