@@ -11,14 +11,34 @@ static const wchar_t *NAV_LABELS[NAV_COUNT] = {
     L"CONFIGURAÇÕES",
 };
 
+static int s_hoverTab = -1;
+
+BOOL navbar_set_hover(int tab) {
+    if (tab == s_hoverTab) return FALSE;
+    s_hoverTab = tab;
+    return TRUE;
+}
+
 void navbar_paint(HDC dc, int clientW, int activeTab) {
     RECT rcBar = {0, TITLEBAR_H, clientW, TITLEBAR_H + NAVBAR_H};
-    FillRect(dc, &rcBar, g_hbrPrimary);
+    FillRect(dc, &rcBar, g_hbrCard);
 
     for (int i = 0; i < NAV_COUNT; i++) {
         RECT rt = {i * NAV_TAB_W, TITLEBAR_H,
                    (i + 1) * NAV_TAB_W, TITLEBAR_H + NAVBAR_H};
         BOOL active = (i == activeTab);
+        BOOL hover  = (!active && i == s_hoverTab);
+
+        /* Fundo da tab ativa ou hover */
+        if (active) {
+            HBRUSH hba = CreateSolidBrush(CLR_ACCENT_LIGHT);
+            FillRect(dc, &rt, hba);
+            DeleteObject(hba);
+        } else if (hover) {
+            HBRUSH hbh = CreateSolidBrush(CLR_BG_SECONDARY);
+            FillRect(dc, &rt, hbh);
+            DeleteObject(hbh);
+        }
 
         /* Ícone (20px centrado verticalmente) */
         HICON ico = (i == 0) ? g_icoFolder20
@@ -30,19 +50,19 @@ void navbar_paint(HDC dc, int clientW, int activeTab) {
             DrawIconEx(dc, iconX, iconY, ico, 20, 20, 0, NULL, DI_NORMAL);
         }
 
-        /* Texto */
+        /* Texto — mesma fonte para todas as tabs, só cor muda */
         SetTextColor(dc, active ? CLR_ACCENT : CLR_TEXT_SECONDARY);
         SetBkMode(dc, TRANSPARENT);
-        HFONT of = (HFONT)SelectObject(dc, active ? g_fontContent : g_fontSmall);
+        HFONT of = (HFONT)SelectObject(dc, g_fontContent);
         RECT rtxt = {rt.left + 38, rt.top, rt.right - 4, rt.bottom};
         DrawTextW(dc, NAV_LABELS[i], -1, &rtxt,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         SelectObject(dc, of);
 
-        /* Linha azul inferior na aba ativa (3px) */
+        /* Linha azul inferior na aba ativa (4px) */
         if (active) {
             HBRUSH hbl = CreateSolidBrush(CLR_ACCENT);
-            RECT rl = {rt.left, rt.bottom - 3, rt.right, rt.bottom};
+            RECT rl = {rt.left, rt.bottom - 4, rt.right, rt.bottom};
             FillRect(dc, &rl, hbl);
             DeleteObject(hbl);
         }

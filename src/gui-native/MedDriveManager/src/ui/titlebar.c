@@ -31,9 +31,9 @@ void titlebar_draw_button(DRAWITEMSTRUCT *dis) {
 
     COLORREF bg;
     if (isClose)
-        bg = sel ? CLR_CLOSE_PRS : hot ? CLR_CLOSE_HOV : CLR_BG_PRIMARY;
+        bg = sel ? CLR_CLOSE_PRS : hot ? CLR_CLOSE_HOV : CLR_CARD;
     else
-        bg = sel ? CLR_TITLEBTN_HOV : hot ? CLR_TITLEBTN_HOV : CLR_BG_PRIMARY;
+        bg = sel ? CLR_TITLEBTN_HOV : hot ? CLR_TITLEBTN_HOV : CLR_CARD;
 
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);
@@ -51,7 +51,7 @@ void titlebar_draw_button(DRAWITEMSTRUCT *dis) {
 
 void titlebar_paint(HDC dc, int clientW) {
     RECT rcBar = {0, 0, clientW, TITLEBAR_H};
-    FillRect(dc, &rcBar, g_hbrPrimary);
+    FillRect(dc, &rcBar, g_hbrCard);
 
     HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
     RECT rcLine = {0, TITLEBAR_H - 1, clientW, TITLEBAR_H};

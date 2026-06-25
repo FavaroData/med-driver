@@ -63,7 +63,7 @@ BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
     else if (style == BTN_STYLE_PRIMARY)
         bg = sel ? CLR_ACCENT_HOVER : hot ? CLR_BTN_PRIMARY_HOV : CLR_BTN_PRIMARY;
     else
-        bg = sel ? CLR_BTN_SEC_HOV : hot ? CLR_BTN_SEC_HOV : CLR_BTN_SECONDARY;
+        bg = sel ? CLR_ACCENT_LIGHT : hot ? CLR_ACCENT_LIGHT : CLR_BTN_SECONDARY;
 
     HBRUSH hbr = CreateSolidBrush(bg);
     FillRect(dc, &rc, hbr);

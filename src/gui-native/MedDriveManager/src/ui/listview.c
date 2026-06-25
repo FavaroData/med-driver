@@ -56,7 +56,7 @@ static LRESULT CALLBACK HeaderSubclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp
 
             SetTextColor(dc, CLR_TEXT_SECONDARY);
             SetBkMode(dc, TRANSPARENT);
-            HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+            HFONT of = (HFONT)SelectObject(dc, g_fontContent);
             RECT rt = {textX, ir.top, ir.right - 4, ir.bottom};
             DrawTextW(dc, buf, -1, &rt,
                       DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -222,7 +222,7 @@ void listview_draw_item(DRAWITEMSTRUCT *dis) {
         wchar_t text[512] = {0};
         ListView_GetItemText(dis->hwndItem, (int)idx, col, text, 512);
 
-        RECT rcCell = {x + 8, rc.top, x + colW - 4, rc.bottom};
+        RECT rcCell = {x + 10, rc.top, x + colW - 4, rc.bottom};
         DrawTextW(dc, text, -1, &rcCell,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         x += colW;

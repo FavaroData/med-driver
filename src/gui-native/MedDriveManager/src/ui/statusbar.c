@@ -36,7 +36,7 @@ static LRESULT CALLBACK SbWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         /* Texto */
         SetTextColor(dc, CLR_TEXT_SECONDARY);
         SetBkMode(dc, TRANSPARENT);
-        HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+        HFONT of = (HFONT)SelectObject(dc, g_fontContent);
         RECT rt = {36, rc.top, rc.right - 8, rc.bottom};
         DrawTextW(dc, s_sbText, -1, &rt,
                   DT_LEFT | DT_VCENTER | DT_SINGLELINE);

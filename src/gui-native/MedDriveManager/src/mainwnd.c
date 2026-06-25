@@ -52,6 +52,7 @@ static int  g_profileCount = 0;
 
 /* Status bar */
 static HWND g_hwndStatus;
+static BOOL s_navTrackingMouse = FALSE;
 
 /* ── Helpers de negócio — Impressoras ────────────────────────────────── */
 static void list_refresh(void) {
@@ -665,7 +666,7 @@ static void paint_profile_panel(HDC dc, int clientW) {
 
     /* Fundo e borda do card */
     RECT rcPanel = {panX, panY, panX + panW, panY + panH};
-    FillRect(dc, &rcPanel, g_hbrPrimary);
+    FillRect(dc, &rcPanel, g_hbrCard);
     HBRUSH hbrd = CreateSolidBrush(CLR_BORDER);
     FrameRect(dc, &rcPanel, hbrd);
     DeleteObject(hbrd);
@@ -927,6 +928,28 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BTN_EDIT_PROFILE:  on_edit_profile(hwnd); break;
         case IDC_BTN_DUP_PROFILE:   on_dup_profile(hwnd);  break;
         case IDC_BTN_DEL_PROFILE:   on_del_profile(hwnd);  break;
+        }
+        return 0;
+
+    case WM_MOUSEMOVE: {
+        int x = (int)(short)LOWORD(lp);
+        int y = (int)(short)HIWORD(lp);
+        if (navbar_set_hover(navbar_hittest(x, y))) {
+            RECT rcNav = {0, TITLEBAR_H, WIN_W, TITLEBAR_H + NAVBAR_H};
+            InvalidateRect(hwnd, &rcNav, FALSE);
+        }
+        if (!s_navTrackingMouse) {
+            TRACKMOUSEEVENT tme = {sizeof(tme), TME_LEAVE, hwnd, 0};
+            TrackMouseEvent(&tme);
+            s_navTrackingMouse = TRUE;
+        }
+        return 0;
+    }
+    case WM_MOUSELEAVE:
+        s_navTrackingMouse = FALSE;
+        if (navbar_set_hover(-1)) {
+            RECT rcNav = {0, TITLEBAR_H, WIN_W, TITLEBAR_H + NAVBAR_H};
+            InvalidateRect(hwnd, &rcNav, FALSE);
         }
         return 0;
 

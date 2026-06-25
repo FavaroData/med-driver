@@ -8,3 +8,6 @@ void navbar_paint(HDC dc, int clientW, int activeTab);
 
 /* Retorna o índice da aba clicada (0, 1 ou 2), ou -1 se nenhuma. */
 int navbar_hittest(int x, int y);
+
+/* Atualiza a tab em hover; retorna TRUE se mudou (chame InvalidateRect). */
+BOOL navbar_set_hover(int tab);
