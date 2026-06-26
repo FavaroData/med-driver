@@ -5,9 +5,9 @@
 #include <stdio.h>
 #include <winspool.h>
 #include "mainwnd.h"
-#include "dlg_add.h"
-#include "dlg_profile.h"
-#include "dlg_progress.h"
+#include "dialogs/dlg_add.h"
+#include "dialogs/dlg_profile.h"
+#include "dialogs/dlg_progress.h"
 #include "store.h"
 #include "resource.h"
 #include "ui/theme.h"
