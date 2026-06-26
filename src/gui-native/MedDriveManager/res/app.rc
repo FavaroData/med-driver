@@ -1,6 +1,8 @@
 #include <winresrc.h>
 #include "resource.h"
 
+1 RT_MANIFEST "app.manifest"
+
 /* ── Ícones (Q6) ─────────────────────────────────────────────── */
 IDI_ICO_ADD20      ICON  "icons/add_20.ico"
 IDI_ICO_DELETE20   ICON  "icons/delete_20.ico"

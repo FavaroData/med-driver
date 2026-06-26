@@ -60,3 +60,8 @@
 #define IDC_CHK_OPEN_AFTER         307
 #define IDC_CHK_OVERWRITE          308
 #define IDC_CHK_CHOOSE_PATH        309
+
+/* ── Aba Configurações ───────────────────────────────────────────── */
+#define IDC_CHK_AGENT_AUTOSTART    130
+#define IDC_BTN_CFG_SAVE           131
+#define IDC_BTN_CFG_DISCARD        132

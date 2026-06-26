@@ -34,6 +34,8 @@ $MINGW-gcc $DEFS $INC -c "$SRC/ui/navbar.c"           -o "$TMP/ui_navbar.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/ui/listview.c"         -o "$TMP/ui_listview.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/ui/statusbar.c"        -o "$TMP/ui_statusbar.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/ui/buttons.c"          -o "$TMP/ui_buttons.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/settings/settings.c"     -o "$TMP/settings.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/settings/settings_tab.c" -o "$TMP/settings_tab.o"
 
 echo "=== Compilando recursos ==="
 $MINGW-windres --codepage 65001 -I"$RES" "$RES/app.rc" -o "$TMP/app_res.o"
@@ -45,6 +47,7 @@ $MINGW-gcc -mwindows \
     "$TMP/dlg_progress.o" "$TMP/dlg_profile.o" "$TMP/store.o" \
     "$TMP/ui_theme.o" "$TMP/ui_titlebar.o" "$TMP/ui_navbar.o" \
     "$TMP/ui_listview.o" "$TMP/ui_statusbar.o" "$TMP/ui_buttons.o" \
+    "$TMP/settings.o" "$TMP/settings_tab.o" \
     "$TMP/app_res.o" \
     -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool -ldwmapi \
     -o "$OUT/MedDriveManager.exe"

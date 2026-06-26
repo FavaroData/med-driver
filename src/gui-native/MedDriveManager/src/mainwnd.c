@@ -16,11 +16,9 @@
 #include "ui/listview.h"
 #include "ui/statusbar.h"
 #include "ui/buttons.h"
+#include "settings/settings_tab.h"
 
 #define MAX_PRINTERS 512
-
-/* ── Subtítulo (seção) ───────────────────────────────────────────────── */
-#define SUBTITLE_H  20
 
 /* ── Layout inline da aba Perfis ────────────────────────────────────── */
 #define PROF_SUBLABEL_Y  (TITLEBAR_H + NAVBAR_H + SUBTITLE_H + 4)  /* "Perfil selecionado:" */
@@ -221,6 +219,7 @@ static void switch_tab(int tab) {
 
     BOOL isPerfis      = (tab == 0);
     BOOL isImpressoras = (tab == 1);
+    BOOL isConfig      = (tab == 2);
 
     ShowWindow(g_hwndCombo,          isPerfis      ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnNewProfile,  isPerfis      ? SW_SHOW : SW_HIDE);
@@ -234,6 +233,9 @@ static void switch_tab(int tab) {
     ShowWindow(g_hwndBtnEditPrinter,  isImpressoras ? SW_SHOW : SW_HIDE);
     ShowWindow(g_hwndBtnRefresh,      isImpressoras ? SW_SHOW : SW_HIDE);
 
+    settings_tab_show(isConfig);
+    if (isConfig) settings_tab_load();
+
     /* Statusbar: conteúdo depende da aba */
     if (g_hwndStatus) {
         if (isPerfis) {
@@ -243,6 +245,8 @@ static void switch_tab(int tab) {
             else
                 _snwprintf_s(t, 128, _TRUNCATE, L"%d perfis cadastrados", g_profileCount);
             statusbar_set_text_raw(g_hwndStatus, t);
+        } else if (isConfig) {
+            statusbar_set_text_raw(g_hwndStatus, L"Configurações do sistema");
         } else {
             statusbar_set_text(g_hwndStatus, g_count);
         }
@@ -744,6 +748,8 @@ static void on_create(HWND hwnd) {
                                        L"Atualizar", BTN_STYLE_SECONDARY,
                                        CONTENT_PAD + (BTN_W + 8) * 3, printerBtnY, BTN_W, BTN_H);
 
+    settings_tab_create(hwnd, hInst);
+
     /* Status bar */
     g_hwndStatus = statusbar_create(hwnd, hInst);
     statusbar_resize(g_hwndStatus, WIN_W, WIN_H);
@@ -776,9 +782,10 @@ static void on_paint(HWND hwnd) {
     FillRect(dc, &rcContent, g_hbrPrimary);
 
     /* Cabeçalho de seção */
-    if (g_activeTab == 0 || g_activeTab == 1) {
+    if (g_activeTab == 0 || g_activeTab == 1 || g_activeTab == 2) {
         const wchar_t *sub = (g_activeTab == 0) ? L"PERFIS DE IMPRESSÃO"
-                                                 : L"IMPRESSORAS CADASTRADAS";
+                           : (g_activeTab == 1) ? L"IMPRESSORAS CADASTRADAS"
+                                                : L"CONFIGURAÇÕES";
         SetTextColor(dc, CLR_ACCENT);
         SetBkMode(dc, TRANSPARENT);
         HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
@@ -820,14 +827,8 @@ static void on_paint(HWND hwnd) {
     }
 
     /* Aba Configurações */
-    if (g_activeTab == 2) {
-        SetTextColor(dc, CLR_TEXT_DISABLED);
-        SetBkMode(dc, TRANSPARENT);
-        HFONT of = (HFONT)SelectObject(dc, g_fontSubtitle);
-        DrawTextW(dc, L"Configurações — em breve.", -1, &rcContent,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        SelectObject(dc, of);
-    }
+    if (g_activeTab == 2)
+        settings_tab_paint(dc);
 
     /* Barra de botões (só Impressoras / Configurações) */
     if (g_activeTab != 0) {
@@ -896,6 +897,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lp;
+        if (settings_tab_drawitem(dis)) return TRUE;
         if (dis->CtlID == IDC_PRINTER_LIST) {
             listview_draw_item(dis);
             return TRUE;
@@ -915,11 +917,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return FALSE;
     }
 
+    case WM_CTLCOLORSTATIC: {
+        LRESULT br = settings_tab_ctlcolor((HWND)lp, (HDC)wp);
+        if (br) return br;
+        return DefWindowProcW(hwnd, msg, wp, lp);
+    }
+
     case WM_COMMAND:
         if (LOWORD(wp) == IDC_COMBO_PROFILE_SEL && HIWORD(wp) == CBN_SELCHANGE) {
             InvalidateRect(hwnd, NULL, FALSE);
             return 0;
         }
+        if (settings_tab_command(LOWORD(wp))) return 0;
         switch (LOWORD(wp)) {
         case IDC_BTN_ADD:              on_add(hwnd);             break;
         case IDC_BTN_REMOVE:           on_remove(hwnd);          break;

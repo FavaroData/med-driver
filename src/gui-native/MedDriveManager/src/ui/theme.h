@@ -41,6 +41,7 @@
 #define BTN_H            34
 #define TITLEBTN_W       46
 #define NAV_TAB_W       160
+#define SUBTITLE_H       20
 
 /* ── IDs dos botões da title bar ─────────────────────────────────────── */
 #define IDC_BTN_TITLEMIN   901
