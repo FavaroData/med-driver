@@ -15,6 +15,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <commdlg.h>
+#include <objbase.h>
 #include <stdio.h>
 #include <stdarg.h>
 
@@ -199,8 +200,23 @@ static void Log(const char *fmt, ...) {
     CloseHandle(hLog);
 }
 
+static BOOL IsWin7OrOlder(void) {
+    typedef LONG (WINAPI *RtlGetVersionFn)(OSVERSIONINFOEXW *);
+    RtlGetVersionFn fn = (RtlGetVersionFn)
+        GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+    if (!fn) return FALSE;
+    OSVERSIONINFOEXW osvi = {0};
+    osvi.dwOSVersionInfoSize = sizeof(osvi);
+    fn(&osvi);
+    return osvi.dwMajorVersion < 10;
+}
+
 int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
     (void)hInst; (void)hPrev; (void)lpCmd; (void)nShow;
+
+    BOOL needCoInit = IsWin7OrOlder();
+    if (needCoInit)
+        CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
 
     DWORD sessionId = 0;
     ProcessIdToSessionId(GetCurrentProcessId(), &sessionId);
@@ -317,8 +333,11 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
                 } else {
                     Log("[agent] [PDF] %ls\n", resolvedPath);
                     Log("[agent] [OK] job concluido\n");
-                    if (msg.openAfterGenerate)
-                        ShellExecuteW(NULL, L"open", resolvedPath, NULL, NULL, SW_SHOWNORMAL);
+                    if (msg.openAfterGenerate) {
+                        HINSTANCE r = ShellExecuteW(NULL, L"open", resolvedPath, NULL, NULL, SW_SHOWNORMAL);
+                        Log("[agent] ShellExecuteW: %Id%s\n", (INT_PTR)r,
+                            (INT_PTR)r <= 32 ? " (FALHOU)" : " (OK)");
+                    }
                 }
             } else {
                 _snwprintf(resp.errorMsg, 512,
