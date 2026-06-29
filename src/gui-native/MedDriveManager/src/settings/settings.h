@@ -3,6 +3,7 @@
 
 typedef struct {
     BOOL agentAutoStart;
+    BOOL requireAgentRunning;
 } AppSettings;
 
 void settings_load(AppSettings *out);

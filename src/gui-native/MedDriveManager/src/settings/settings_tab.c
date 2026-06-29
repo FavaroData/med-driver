@@ -1,5 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <tlhelp32.h>
 #include "settings_tab.h"
 #include "settings.h"
 #include "../ui/theme.h"
@@ -13,13 +14,15 @@
 #define CFG_INNER    10
 #define CFG_HDR_H    45
 #define CFG_CHK_H    22
-#define CFG_CARD_H   (CFG_HDR_H + CFG_INNER + CFG_CHK_H + CFG_INNER)
+#define CFG_CHK_GAP  6
+#define CFG_CARD_H   (CFG_HDR_H + CFG_INNER + CFG_CHK_H + CFG_CHK_GAP + CFG_CHK_H + CFG_INNER)
 #define CFG_BTN_Y    (WIN_H - STATUSBAR_H - BTNBAR_H + (BTNBAR_H - BTN_H) / 2)
 #define CFG_SAVE_X   (WIN_W - CONTENT_PAD - BTN_W)
 #define CFG_DISC_X   (CFG_SAVE_X - 8 - BTN_W)
 
 static HWND        s_hwndParent;
 static HWND        s_hwndChk;
+static HWND        s_hwndChkRequireAgent;
 static HWND        s_hwndSave;
 static HWND        s_hwndDiscard;
 static AppSettings s_saved;
@@ -36,6 +39,15 @@ void settings_tab_create(HWND parent, HINSTANCE hInst) {
         parent, (HMENU)(UINT_PTR)IDC_CHK_AGENT_AUTOSTART, hInst, NULL);
     SendMessageW(s_hwndChk, WM_SETFONT, (WPARAM)g_fontContent, FALSE);
 
+    s_hwndChkRequireAgent = CreateWindowExW(0, L"BUTTON",
+        L"Exigir agente ativo para criar impressoras e perfis",
+        WS_CHILD | BS_AUTOCHECKBOX,
+        CONTENT_PAD + CFG_INNER,
+        CFG_CARD_Y + CFG_HDR_H + CFG_INNER + CFG_CHK_H + CFG_CHK_GAP,
+        CFG_COL_W - CFG_INNER * 2, CFG_CHK_H,
+        parent, (HMENU)(UINT_PTR)IDC_CHK_REQUIRE_AGENT, hInst, NULL);
+    SendMessageW(s_hwndChkRequireAgent, WM_SETFONT, (WPARAM)g_fontContent, FALSE);
+
     s_hwndSave = buttons_create(parent, hInst, IDC_BTN_CFG_SAVE,
                                 L"Salvar", BTN_STYLE_PRIMARY,
                                 CFG_SAVE_X, CFG_BTN_Y, BTN_W, BTN_H);
@@ -46,9 +58,10 @@ void settings_tab_create(HWND parent, HINSTANCE hInst) {
 
 void settings_tab_show(BOOL visible) {
     int cmd = visible ? SW_SHOW : SW_HIDE;
-    ShowWindow(s_hwndChk,     cmd);
-    ShowWindow(s_hwndSave,    cmd);
-    ShowWindow(s_hwndDiscard, cmd);
+    ShowWindow(s_hwndChk,             cmd);
+    ShowWindow(s_hwndChkRequireAgent, cmd);
+    ShowWindow(s_hwndSave,            cmd);
+    ShowWindow(s_hwndDiscard,         cmd);
 }
 
 void settings_tab_load(void) {
@@ -56,6 +69,8 @@ void settings_tab_load(void) {
     s_pending = s_saved;
     SendMessageW(s_hwndChk, BM_SETCHECK,
                  s_pending.agentAutoStart ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(s_hwndChkRequireAgent, BM_SETCHECK,
+                 s_pending.requireAgentRunning ? BST_CHECKED : BST_UNCHECKED, 0);
 }
 
 void settings_tab_paint(HDC dc) {
@@ -99,6 +114,8 @@ BOOL settings_tab_command(UINT id) {
 
         s_pending.agentAutoStart =
             (SendMessageW(s_hwndChk, BM_GETCHECK, 0, 0) == BST_CHECKED);
+        s_pending.requireAgentRunning =
+            (SendMessageW(s_hwndChkRequireAgent, BM_GETCHECK, 0, 0) == BST_CHECKED);
         if (settings_save(&s_pending)) {
             s_saved = s_pending;
             MessageBoxW(s_hwndParent,
@@ -118,18 +135,42 @@ BOOL settings_tab_command(UINT id) {
         s_pending = s_saved;
         SendMessageW(s_hwndChk, BM_SETCHECK,
                      s_pending.agentAutoStart ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessageW(s_hwndChkRequireAgent, BM_SETCHECK,
+                     s_pending.requireAgentRunning ? BST_CHECKED : BST_UNCHECKED, 0);
         return TRUE;
     }
     return FALSE;
 }
 
 LRESULT settings_tab_ctlcolor(HWND hctl, HDC hdc) {
-    if (hctl == s_hwndChk) {
+    if (hctl == s_hwndChk || hctl == s_hwndChkRequireAgent) {
         SetBkColor(hdc, CLR_CARD);
         SetTextColor(hdc, CLR_TEXT_PRIMARY);
         return (LRESULT)g_hbrCard;
     }
     return 0;
+}
+
+static BOOL agent_process_running(void) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return FALSE;
+    PROCESSENTRY32W pe = {sizeof(pe)};
+    BOOL found = FALSE;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, L"MeddrivePrinterAgent.exe") == 0) {
+                found = TRUE; break;
+            }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+BOOL settings_tab_require_agent(void) {
+    if (SendMessageW(s_hwndChkRequireAgent, BM_GETCHECK, 0, 0) != BST_CHECKED)
+        return FALSE;
+    return !agent_process_running();
 }
 
 BOOL settings_tab_drawitem(DRAWITEMSTRUCT *dis) {

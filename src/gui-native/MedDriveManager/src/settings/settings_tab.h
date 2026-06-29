@@ -8,3 +8,4 @@ void    settings_tab_paint(HDC dc);
 BOOL    settings_tab_command(UINT id);
 LRESULT settings_tab_ctlcolor(HWND hctl, HDC hdc);
 BOOL    settings_tab_drawitem(DRAWITEMSTRUCT *dis);
+BOOL    settings_tab_require_agent(void);

@@ -5,6 +5,13 @@
 
 #define TASK_NAME  L"MeddrivePrinterAgent"
 #define TASK_XML   L"%SystemRoot%\\System32\\Tasks\\MeddrivePrinterAgent"
+#define INI_DIR    L"%ProgramData%\\Meddrive Printer"
+#define INI_FILE   L"%ProgramData%\\Meddrive Printer\\settings.ini"
+#define INI_SECT   L"Geral"
+
+static void get_ini_path(wchar_t *out, int len) {
+    ExpandEnvironmentStringsW(INI_FILE, out, len);
+}
 
 static BOOL run_schtasks(const wchar_t *flag) {
     wchar_t cmd[256];
@@ -29,7 +36,13 @@ static BOOL run_schtasks(const wchar_t *flag) {
 }
 
 void settings_load(AppSettings *out) {
-    out->agentAutoStart = FALSE;
+    out->agentAutoStart      = FALSE;
+    out->requireAgentRunning = FALSE;
+
+    wchar_t ini[MAX_PATH];
+    get_ini_path(ini, MAX_PATH);
+    out->requireAgentRunning =
+        (GetPrivateProfileIntW(INI_SECT, L"RequireAgentRunning", 0, ini) != 0);
 
     wchar_t path[MAX_PATH];
     ExpandEnvironmentStringsW(TASK_XML, path, MAX_PATH);
@@ -76,5 +89,13 @@ void settings_load(AppSettings *out) {
 }
 
 BOOL settings_save(const AppSettings *s) {
-    return run_schtasks(s->agentAutoStart ? L"/ENABLE" : L"/DISABLE");
+    BOOL ok = run_schtasks(s->agentAutoStart ? L"/ENABLE" : L"/DISABLE");
+
+    wchar_t dir[MAX_PATH], ini[MAX_PATH];
+    ExpandEnvironmentStringsW(INI_DIR, dir, MAX_PATH);
+    CreateDirectoryW(dir, NULL);
+    get_ini_path(ini, MAX_PATH);
+    WritePrivateProfileStringW(INI_SECT, L"RequireAgentRunning",
+                               s->requireAgentRunning ? L"1" : L"0", ini);
+    return ok;
 }

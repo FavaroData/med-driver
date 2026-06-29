@@ -199,6 +199,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DRAWITEM: {
         DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lp;
+        if (dis->CtlID == IDC_PRINTER_LIST || dis->CtlID == IDC_PROFILE_LIST) {
+            listview_draw_item(dis);
+            return TRUE;
+        }
         if (settings_tab_drawitem(dis)) return TRUE;
         if (profiles_tab_drawitem(dis))  return TRUE;
         if (printers_tab_drawitem(dis))  return TRUE;
@@ -222,6 +226,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (LOWORD(wp) == IDC_BTN_REFRESH)
             profiles_tab_load();
+        if ((LOWORD(wp) == IDC_BTN_ADD ||
+             LOWORD(wp) == IDC_BTN_NEW_PROFILE ||
+             LOWORD(wp) == IDC_BTN_DUP_PROFILE) && settings_tab_require_agent()) {
+            MessageBoxW(hwnd,
+                L"O MedDrive Printer Agent não está em execução.\r\n"
+                L"Inicie o agente antes de criar impressoras e perfis.",
+                L"Agente inativo", MB_ICONWARNING | MB_OK);
+            return 0;
+        }
         if (settings_tab_command(LOWORD(wp))) return 0;
         if (profiles_tab_command(LOWORD(wp))) return 0;
         if (printers_tab_command(LOWORD(wp))) return 0;

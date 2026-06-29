@@ -65,3 +65,4 @@
 #define IDC_CHK_AGENT_AUTOSTART    130
 #define IDC_BTN_CFG_SAVE           131
 #define IDC_BTN_CFG_DISCARD        132
+#define IDC_CHK_REQUIRE_AGENT      133
