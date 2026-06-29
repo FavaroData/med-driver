@@ -7,6 +7,7 @@ param(
     [string]$ProfileName,
     [string]$OutputPath,
     [string]$OutputBaseName,
+    [string]$GhostscriptPath,
     [switch]$OpenAfterGenerate,
     [switch]$OverwriteFile,
     [switch]$ChoosePath
@@ -38,7 +39,7 @@ if (-not $ProfileName)    { Log "[ERRO] Parametro -ProfileName e obrigatorio."; 
 if (-not $OutputPath)     { Log "[ERRO] Parametro -OutputPath e obrigatorio.";     $LogWriter.Close(); exit 1 }
 if (-not $OutputBaseName) { Log "[ERRO] Parametro -OutputBaseName e obrigatorio."; $LogWriter.Close(); exit 1 }
 
-$GhostscriptPath       = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+if (-not $GhostscriptPath) { $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe" }
 $ErrorActionPreference = "Stop"
 
 $DllPath = "$env:SystemRoot\System32\meddrivemon.dll"

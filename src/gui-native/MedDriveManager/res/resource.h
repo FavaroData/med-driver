@@ -66,3 +66,6 @@
 #define IDC_BTN_CFG_SAVE           131
 #define IDC_BTN_CFG_DISCARD        132
 #define IDC_CHK_REQUIRE_AGENT      133
+#define IDC_LBL_GS_PATH            134
+#define IDC_BTN_GS_CHANGE          135
+#define IDC_BTN_GS_TEST            136

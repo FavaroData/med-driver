@@ -6,6 +6,7 @@ param(
     [string]$NewName,
     [string]$OutputPath,
     [string]$OutputBaseName,
+    [string]$GhostscriptPath,
     [switch]$OpenAfterGenerate,
     [switch]$OverwriteFile,
     [switch]$ChoosePath
@@ -39,7 +40,7 @@ if (-not $OutputBaseName) { Log "[ERRO] Parametro -OutputBaseName e obrigatorio.
 
 if (-not $NewName) { $NewName = $ProfileName }
 
-$GhostscriptPath       = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe"
+if (-not $GhostscriptPath) { $GhostscriptPath = "$env:ProgramData\Meddrive Printer\Ghostscript\bin\gswin64c.exe" }
 $ErrorActionPreference = "Stop"
 
 $MonitorName = "Meddrive Printer MONITOR"

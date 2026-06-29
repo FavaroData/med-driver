@@ -24,7 +24,7 @@
 
 typedef struct {
     WCHAR psTempPath[MAX_PATH];    // arquivo PS temporario gerado pelo Spooler
-    WCHAR outputPath[MAX_PATH];    // pasta de destino (ex: C:\PDFs ou \\servidor\PDFs)
+    WCHAR outputPath[MAX_PATH];    // pasta de destino 
     WCHAR outputBaseName[256];     // template do nome (ex: {documento}_{nnn})
     WCHAR docName[512];            // nome do job de impressao (ex: "Relatorio Abril")
     WCHAR gsPath[MAX_PATH];        // caminho do executavel do Ghostscript
@@ -269,6 +269,7 @@ int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nShow) {
         }
         Log("[agent] [JOB] \"%ls\" -> %ls | template: %ls\n",
             msg.docName, msg.outputPath, msg.outputBaseName);
+        Log("[agent] [GS PATH] \"%ls\"\n", msg.gsPath);
 
         PrintJobResponse resp = {0};
 

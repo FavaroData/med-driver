@@ -5,9 +5,12 @@
 
 #define TASK_NAME  L"MeddrivePrinterAgent"
 #define TASK_XML   L"%SystemRoot%\\System32\\Tasks\\MeddrivePrinterAgent"
-#define INI_DIR    L"%ProgramData%\\Meddrive Printer"
-#define INI_FILE   L"%ProgramData%\\Meddrive Printer\\settings.ini"
-#define INI_SECT   L"Geral"
+#define INI_DIR      L"%ProgramData%\\Meddrive Printer"
+#define INI_FILE     L"%ProgramData%\\Meddrive Printer\\settings.ini"
+#define INI_SECT     L"Geral"
+#define INI_SECT_GS  L"Ghostscript"
+#define GS_DEFAULT   L"%ProgramData%\\Meddrive Printer\\Ghostscript\\bin\\gswin64c.exe"
+#define PORTS_KEY    L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\Meddrive Printer MONITOR\\Ports"
 
 static void get_ini_path(wchar_t *out, int len) {
     ExpandEnvironmentStringsW(INI_FILE, out, len);
@@ -43,6 +46,10 @@ void settings_load(AppSettings *out) {
     get_ini_path(ini, MAX_PATH);
     out->requireAgentRunning =
         (GetPrivateProfileIntW(INI_SECT, L"RequireAgentRunning", 0, ini) != 0);
+
+    ExpandEnvironmentStringsW(GS_DEFAULT, out->gsPath, MAX_PATH);
+    GetPrivateProfileStringW(INI_SECT_GS, L"ExecutablePath",
+                             out->gsPath, out->gsPath, MAX_PATH, ini);
 
     wchar_t path[MAX_PATH];
     ExpandEnvironmentStringsW(TASK_XML, path, MAX_PATH);
@@ -97,5 +104,28 @@ BOOL settings_save(const AppSettings *s) {
     get_ini_path(ini, MAX_PATH);
     WritePrivateProfileStringW(INI_SECT, L"RequireAgentRunning",
                                s->requireAgentRunning ? L"1" : L"0", ini);
+    WritePrivateProfileStringW(INI_SECT_GS, L"ExecutablePath", s->gsPath, ini);
+
+    /* atualiza GhostscriptPath no registry de todos os perfis existentes */
+    HKEY hPorts;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, PORTS_KEY, 0,
+                      KEY_READ | KEY_ENUMERATE_SUB_KEYS, &hPorts) == ERROR_SUCCESS) {
+        DWORD i = 0;
+        wchar_t portName[256];
+        DWORD portNameLen = 256;
+        while (RegEnumKeyExW(hPorts, i++, portName, &portNameLen,
+                             NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+            HKEY hPort;
+            if (RegOpenKeyExW(hPorts, portName, 0, KEY_SET_VALUE, &hPort) == ERROR_SUCCESS) {
+                RegSetValueExW(hPort, L"GhostscriptPath", 0, REG_SZ,
+                               (BYTE *)s->gsPath,
+                               (DWORD)((wcslen(s->gsPath) + 1) * sizeof(wchar_t)));
+                RegCloseKey(hPort);
+            }
+            portNameLen = 256;
+        }
+        RegCloseKey(hPorts);
+    }
+
     return ok;
 }

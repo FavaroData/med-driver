@@ -6,6 +6,12 @@
 **Nunca modifique código sem pedir permissão ao usuário antes.**
 Apresente a proposta, aguarde aprovação explícita, só então edite os arquivos.
 
+**Antes de implementar, mostre o código e as alterações.**
+Para cada mudança proposta, escreva o diff exato — arquivo por arquivo, com as linhas removidas e adicionadas — antes de aplicar qualquer edição. O usuário precisa ver e aprovar o código concreto, não apenas a descrição em palavras.
+
+**Sempre explique com muitas palavras.**
+Ao responder perguntas, investigar problemas ou apresentar propostas, use linguagem detalhada e completa. Não resuma demais. Prefira clareza e contexto a brevidade.
+
 ## Formato de resposta ao investigar problemas
 
 Ao analisar logs ou depurar um problema, estruture a resposta assim:

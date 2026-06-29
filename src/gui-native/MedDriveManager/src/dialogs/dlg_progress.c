@@ -23,10 +23,21 @@ typedef struct {
     wchar_t      newProfileName[256];
     wchar_t      outputPath[MAX_PATH];
     wchar_t      outputBaseName[256];
+    wchar_t      gsPath[MAX_PATH];
     BOOL         openAfterGenerate;
     BOOL         overwriteFile;
     BOOL         choosePath;
 } ProgressParams;
+
+static void load_gs_path(wchar_t *out, int len) {
+    wchar_t ini[MAX_PATH];
+    ExpandEnvironmentStringsW(
+        L"%ProgramData%\\Meddrive Printer\\settings.ini", ini, MAX_PATH);
+    wchar_t def[MAX_PATH];
+    ExpandEnvironmentStringsW(
+        L"%ProgramData%\\Meddrive Printer\\Ghostscript\\bin\\gswin64c.exe", def, MAX_PATH);
+    GetPrivateProfileStringW(L"Ghostscript", L"ExecutablePath", def, out, len, ini);
+}
 
 static BOOL         s_done;
 static BOOL         s_success;
@@ -123,8 +134,10 @@ static DWORD WINAPI ps_thread_create_profile(LPVOID param) {
     wchar_t cmd[4096];
     _snwprintf_s(cmd, 4096, _TRUNCATE,
         L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
-        L" -ProfileName \"%s\" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s%s",
+        L" -ProfileName \"%s\" -OutputPath \"%s\" -OutputBaseName \"%s\""
+        L" -GhostscriptPath \"%s\"%s%s%s",
         p->scriptPath, p->printerName, p->outputPath, p->outputBaseName,
+        p->gsPath,
         p->openAfterGenerate ? L" -OpenAfterGenerate" : L"",
         p->overwriteFile     ? L" -OverwriteFile"     : L"",
         p->choosePath        ? L" -ChoosePath"        : L"");
@@ -139,9 +152,11 @@ static DWORD WINAPI ps_thread_edit_profile(LPVOID param) {
     _snwprintf_s(cmd, 4096, _TRUNCATE,
         L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
         L" -ProfileName \"%s\" -NewName \"%s\""
-        L" -OutputPath \"%s\" -OutputBaseName \"%s\"%s%s%s",
+        L" -OutputPath \"%s\" -OutputBaseName \"%s\""
+        L" -GhostscriptPath \"%s\"%s%s%s",
         p->scriptPath, p->profileName, p->newProfileName,
         p->outputPath, p->outputBaseName,
+        p->gsPath,
         p->openAfterGenerate ? L" -OpenAfterGenerate" : L"",
         p->overwriteFile     ? L" -OverwriteFile"     : L"",
         p->choosePath        ? L" -ChoosePath"        : L"");
@@ -432,6 +447,7 @@ BOOL dlg_progress_edit_profile(HWND parent,
     wcsncpy_s(params->newProfileName, 256,      newProfileName,  _TRUNCATE);
     wcsncpy_s(params->outputPath,     MAX_PATH, outputPath,      _TRUNCATE);
     wcsncpy_s(params->outputBaseName, 256,      outputBaseName,  _TRUNCATE);
+    load_gs_path(params->gsPath, MAX_PATH);
     params->mode              = MODE_EDIT_PROFILE;
     params->openAfterGenerate = openAfterGenerate;
     params->overwriteFile     = overwriteFile;
@@ -529,6 +545,7 @@ BOOL dlg_progress_create_profile(HWND parent,
     wcsncpy_s(params->printerName,    256,      profileName,   _TRUNCATE);
     wcsncpy_s(params->outputPath,     MAX_PATH, outputPath,    _TRUNCATE);
     wcsncpy_s(params->outputBaseName, 256,      outputBaseName,_TRUNCATE);
+    load_gs_path(params->gsPath, MAX_PATH);
     params->mode              = MODE_CREATE_PROFILE;
     params->openAfterGenerate = openAfterGenerate;
     params->overwriteFile     = overwriteFile;
