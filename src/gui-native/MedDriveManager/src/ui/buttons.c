@@ -78,10 +78,14 @@ BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
 
     /* Ícone (20px à esquerda do texto) */
     HICON ico = NULL;
+    /* O icone e escolhido pelo ID do controle. Cada botao que quiser um icone
+       precisa ter um case aqui. Botoes sem case ficam so com texto, sem icone. */
     switch (dis->CtlID) {
-    case 102: ico = g_icoAdd20;    break; /* IDC_BTN_ADD     */
-    case 103: ico = g_icoDelete20; break; /* IDC_BTN_REMOVE  */
-    case 105: ico = g_icoSync20;   break; /* IDC_BTN_REFRESH */
+    case 102: ico = g_icoAdd20;      break; /* IDC_BTN_ADD        */
+    case 103: ico = g_icoDelete20;   break; /* IDC_BTN_REMOVE     */
+    case 105: ico = g_icoSync20;     break; /* IDC_BTN_REFRESH    */
+    case 141: ico = g_icoFolder20;   break; /* IDC_BTN_LOG_OPEN  */
+    case 142: ico = g_icoDelete20;   break; /* IDC_BTN_LOG_CLEAR */
     }
 
     wchar_t txt[64] = {0};

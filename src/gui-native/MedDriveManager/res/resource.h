@@ -69,3 +69,10 @@
 #define IDC_LBL_GS_PATH            134
 #define IDC_BTN_GS_CHANGE          135
 #define IDC_BTN_GS_TEST            136
+
+/* IDs dos controles do card Logs, que fica dentro da aba Configuracoes.
+   O combobox controla o intervalo de limpeza automatica do arquivo de log.
+   Os tres botoes abrem a pasta, limpam o conteudo e exportam uma copia. */
+#define IDC_CMB_LOG_AUTOCLEAN   140
+#define IDC_BTN_LOG_OPEN        141
+#define IDC_BTN_LOG_CLEAR       142
