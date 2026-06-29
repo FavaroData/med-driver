@@ -3,6 +3,7 @@
 #include <commctrl.h>
 #include <stdio.h>
 #include "profiles_tab.h"
+#include "mainwnd.h"
 #include "store.h"
 #include "resource.h"
 #include "ui/theme.h"
@@ -31,8 +32,6 @@ static int           s_count = 0;
 
 static PrinterEntry  s_printers[MAX_PROFILES];
 static int           s_printerCount = 0;
-
-static void (*s_sync_cb)(void) = NULL;
 
 static const struct { const wchar_t *tok; const wchar_t *desc; } s_tokens[] = {
     { L"{n}",         L"Contador sequencial"      },
@@ -362,6 +361,7 @@ static void on_new_profile(void) {
                                      (BOOL)entry.choosePath)) return;
     s_load();
     profile_refresh();
+    PostMessageW(s_hwndParent, WM_APP_PROFILES_CHANGED, 0, 0);
 }
 
 static void on_edit_profile(void) {
@@ -402,7 +402,7 @@ static void on_edit_profile(void) {
                                    (BOOL)edited.choosePath)) return;
     s_load();
     profile_refresh();
-    if (s_sync_cb) s_sync_cb();
+    PostMessageW(s_hwndParent, WM_APP_PROFILES_CHANGED, 0, 0);
 }
 
 static void on_dup_profile(void) {
@@ -424,6 +424,7 @@ static void on_dup_profile(void) {
                                      (BOOL)result.choosePath)) return;
     s_load();
     profile_refresh();
+    PostMessageW(s_hwndParent, WM_APP_PROFILES_CHANGED, 0, 0);
 }
 
 static void on_del_profile(void) {
@@ -454,6 +455,7 @@ static void on_del_profile(void) {
     if (!dlg_progress_remove_profile(s_hwndParent, s_profiles[sel].name)) return;
     s_load();
     profile_refresh();
+    PostMessageW(s_hwndParent, WM_APP_PROFILES_CHANGED, 0, 0);
 }
 
 /* ── API pública ─────────────────────────────────────────────────────────── */
@@ -543,10 +545,6 @@ void profiles_tab_update_printers(const PrinterEntry *printers, int count) {
     s_printerCount = (count > MAX_PROFILES) ? MAX_PROFILES : count;
     if (s_printerCount > 0)
         memcpy(s_printers, printers, (size_t)s_printerCount * sizeof(PrinterEntry));
-}
-
-void profiles_tab_set_sync_cb(void (*cb)(void)) {
-    s_sync_cb = cb;
 }
 
 const ProfileEntry* profiles_tab_get(int *out_count) {

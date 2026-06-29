@@ -166,6 +166,7 @@
     <ClCompile Include="src\settings\settings.c" />
     <ClCompile Include="src\settings\settings_tab.c" />
     <ClCompile Include="src\profiles\profiles_tab.c" />
+    <ClCompile Include="src\printers\printers_tab.c" />
   </ItemGroup>
 
   <ItemGroup>
@@ -184,6 +185,7 @@
     <ClInclude Include="src\settings\settings.h" />
     <ClInclude Include="src\settings\settings_tab.h" />
     <ClInclude Include="src\profiles\profiles_tab.h" />
+    <ClInclude Include="src\printers\printers_tab.h" />
   </ItemGroup>
 
   <ItemGroup>
