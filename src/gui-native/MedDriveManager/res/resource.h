@@ -72,7 +72,12 @@
 
 /* IDs dos controles do card Logs, que fica dentro da aba Configuracoes.
    O combobox controla o intervalo de limpeza automatica do arquivo de log.
-   Os tres botoes abrem a pasta, limpam o conteudo e exportam uma copia. */
+   Os dois botoes abrem a pasta e limpam o conteudo do log. */
 #define IDC_CMB_LOG_AUTOCLEAN   140
 #define IDC_BTN_LOG_OPEN        141
 #define IDC_BTN_LOG_CLEAR       142
+
+/* IDs dos controles do card Backup, tambem dentro da aba Configuracoes.
+   Os dois botoes gravam e restauram perfis, impressoras e configuracoes em JSON. */
+#define IDC_BTN_BACKUP_EXPORT   150
+#define IDC_BTN_BACKUP_IMPORT   151

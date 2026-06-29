@@ -1,11 +1,14 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <winspool.h>
 #include <tlhelp32.h>
 #include <commdlg.h>
 #include <shellapi.h>  /* ShellExecuteW para abrir o Explorer */
 #include <stdio.h>
 #include "settings_tab.h"
 #include "settings.h"
+#include "import_config.h"
+#include "../store.h"
 #include "../ui/theme.h"
 #include "../ui/buttons.h"
 #include "resource.h"
@@ -46,6 +49,12 @@
 #define CFG_LOG_BTN_W   155
 #define CFG_LOG_H       (CFG_HDR_H + CFG_INNER + CFG_LOG_LBL_H + 4 + CFG_LOG_CMB_H + 8 + BTN_H + CFG_INNER)
 
+/* card Backup: fica abaixo do Logs, ocupa a mesma largura total do conteudo.
+   Altura minima: cabecalho + uma linha com dois botoes lado a lado. */
+#define CFG_BKP_Y     (CFG_LOG_Y + CFG_LOG_H + 16)
+#define CFG_BKP_BTN_W 175
+#define CFG_BKP_H     (CFG_HDR_H + CFG_INNER + BTN_H + CFG_INNER)
+
 static HWND        s_hwndParent;
 static HWND        s_hwndChk;
 static HWND        s_hwndChkRequireAgent;
@@ -56,6 +65,9 @@ static HWND        s_hwndBtnGsTest;
 static HWND        s_hwndCmbAutoClean;
 static HWND        s_hwndBtnLogOpen;
 static HWND        s_hwndBtnLogClear;
+/* controles do card Backup */
+static HWND        s_hwndBtnExport;
+static HWND        s_hwndBtnImport;
 static HWND        s_hwndSave;
 static HWND        s_hwndDiscard;
 static AppSettings s_saved;
@@ -124,6 +136,134 @@ static void log_autoclean_check(void) {
     }
 }
 
+static int ja(wchar_t *j, int p, int cap, const wchar_t *s) {
+    int l = (int)wcslen(s);
+    if (p + l < cap) memcpy(j + p, s, (size_t)l * sizeof(wchar_t));
+    return p + l;
+}
+
+// barras invertidas nos paths do Windows viram \\ no JSON
+static int js(wchar_t *j, int p, int cap, const wchar_t *s) {
+    if (p < cap) j[p++] = L'"';
+    while (*s && p < cap - 2) {
+        if      (*s == L'\\') { j[p++] = L'\\'; j[p++] = L'\\'; }
+        else if (*s == L'"')  { j[p++] = L'\\'; j[p++] = L'"';  }
+        else                  { j[p++] = *s;                      }
+        s++;
+    }
+    if (p < cap) j[p++] = L'"';
+    return p;
+}
+
+static void do_export(void) {
+    static const WCHAR DRV[] = L"Meddrive Printer DRIVER";
+    static const WCHAR PFX[] = L"Meddrive Printer PORT ";
+
+    // dialogo primeiro: se o usuario cancelar nao lemos nada do sistema
+    OPENFILENAMEW ofn = {sizeof(ofn)};
+    wchar_t path[MAX_PATH] = L"meddrive-backup.json";
+    ofn.hwndOwner   = s_hwndParent;
+    ofn.lpstrFilter = L"JSON\0*.json\0\0";
+    ofn.lpstrFile   = path;
+    ofn.nMaxFile    = MAX_PATH;
+    ofn.lpstrDefExt = L"json";
+    ofn.Flags       = OFN_OVERWRITEPROMPT;
+    if (!GetSaveFileNameW(&ofn)) return;
+
+    wchar_t *j = (wchar_t *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY,
+                                       65536 * sizeof(wchar_t));
+    if (!j) return;
+
+    AppSettings s;
+    settings_load(&s);
+
+    ProfileEntry *profiles = NULL;
+    int profCount = profile_load(&profiles);
+
+    // mesmo filtro que printers_tab.c usa para nao exportar impressoras de outros drivers
+    DWORD needed = 0, returned = 0;
+    EnumPrintersW(PRINTER_ENUM_LOCAL, NULL, 2, NULL, 0, &needed, &returned);
+    BYTE *prnBuf = needed ? (BYTE *)HeapAlloc(GetProcessHeap(), 0, needed) : NULL;
+    PRINTER_INFO_2W *prns = NULL;
+    int prnCount = 0;
+    if (prnBuf && EnumPrintersW(PRINTER_ENUM_LOCAL, NULL, 2,
+                                prnBuf, needed, &needed, &returned)) {
+        prns = (PRINTER_INFO_2W *)prnBuf;
+        prnCount = (int)returned;
+    }
+
+    int p = 0, cap = 65536;
+    wchar_t tmp[32];
+
+    p = ja(j, p, cap, L"{\n  \"version\": 1,\n  \"settings\": {");
+    p = ja(j, p, cap, L"\n    \"agentAutoStart\": ");
+    _snwprintf(tmp, 32, L"%d", s.agentAutoStart);      p = ja(j, p, cap, tmp);
+    p = ja(j, p, cap, L",\n    \"requireAgentRunning\": ");
+    _snwprintf(tmp, 32, L"%d", s.requireAgentRunning); p = ja(j, p, cap, tmp);
+    p = ja(j, p, cap, L",\n    \"ghostscriptPath\": ");    p = js(j, p, cap, s.gsPath);
+    _snwprintf(tmp, 32, L"%d", log_autoclean_load());
+    p = ja(j, p, cap, L",\n    \"logAutoCleanDays\": ");   p = ja(j, p, cap, tmp);
+    p = ja(j, p, cap, L"\n  },\n  \"profiles\": [");
+
+    for (int i = 0; i < profCount; i++) {
+        ProfileEntry *e = &profiles[i];
+        p = ja(j, p, cap, i ? L",\n    {" : L"\n    {");
+        p = ja(j, p, cap, L"\n      \"name\": ");            p = js(j, p, cap, e->name);
+        p = ja(j, p, cap, L",\n      \"outputPath\": ");     p = js(j, p, cap, e->outputPath);
+        p = ja(j, p, cap, L",\n      \"outputBaseName\": "); p = js(j, p, cap, e->outputBaseName);
+        _snwprintf(tmp, 32, L"%lu", e->openAfterGenerate);
+        p = ja(j, p, cap, L",\n      \"openAfterGenerate\": "); p = ja(j, p, cap, tmp);
+        _snwprintf(tmp, 32, L"%lu", e->overwriteFile);
+        p = ja(j, p, cap, L",\n      \"overwriteFile\": ");     p = ja(j, p, cap, tmp);
+        _snwprintf(tmp, 32, L"%lu", e->choosePath);
+        p = ja(j, p, cap, L",\n      \"choosePath\": ");        p = ja(j, p, cap, tmp);
+        p = ja(j, p, cap, L"\n    }");
+    }
+
+    p = ja(j, p, cap, L"\n  ],\n  \"printers\": [");
+
+    BOOL first = TRUE;
+    int pfxLen = (int)wcslen(PFX);
+    for (int i = 0; i < prnCount; i++) {
+        if (!prns[i].pDriverName) continue;
+        if (_wcsicmp(prns[i].pDriverName, DRV) != 0) continue;
+        if (!prns[i].pPrinterName || !prns[i].pPortName) continue;
+        // filtro extra: ignora impressoras do nosso driver em porta de monitor diferente (configuracao rara mas possivel)
+        if (wcsncmp(prns[i].pPortName, PFX, (size_t)pfxLen) != 0) continue;
+        p = ja(j, p, cap, first ? L"\n    {" : L",\n    {");
+        p = ja(j, p, cap, L"\n      \"name\": ");     p = js(j, p, cap, prns[i].pPrinterName);
+        p = ja(j, p, cap, L",\n      \"portName\": "); p = js(j, p, cap, prns[i].pPortName);
+        p = ja(j, p, cap, L"\n    }");
+        first = FALSE;
+    }
+
+    p = ja(j, p, cap, L"\n  ]\n}\n");
+    if (p < cap) j[p] = 0; else j[cap - 1] = 0;
+
+    if (prnBuf) HeapFree(GetProcessHeap(), 0, prnBuf);
+    profile_free(profiles);
+
+    int u8Len = WideCharToMultiByte(CP_UTF8, 0, j, -1, NULL, 0, NULL, NULL);
+    char *u8  = (char *)HeapAlloc(GetProcessHeap(), 0, (size_t)u8Len);
+    if (u8) {
+        WideCharToMultiByte(CP_UTF8, 0, j, -1, u8, u8Len, NULL, NULL);
+        HANDLE hf = CreateFileW(path, GENERIC_WRITE, 0, NULL,
+                                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hf != INVALID_HANDLE_VALUE) {
+            DWORD w;
+            WriteFile(hf, u8, (DWORD)(u8Len - 1), &w, NULL); // -1: nao grava o terminador NUL
+            CloseHandle(hf);
+            MessageBoxW(s_hwndParent, L"Configuração exportada com sucesso.",
+                        L"Exportar configuração", MB_ICONINFORMATION | MB_OK);
+        } else {
+            MessageBoxW(s_hwndParent, L"Não foi possível criar o arquivo.",
+                        L"Exportar configuração", MB_ICONERROR | MB_OK);
+        }
+        HeapFree(GetProcessHeap(), 0, u8);
+    }
+    HeapFree(GetProcessHeap(), 0, j);
+}
+
 void settings_tab_create(HWND parent, HINSTANCE hInst) {
     s_hwndParent = parent;
 
@@ -190,6 +330,14 @@ void settings_tab_create(HWND parent, HINSTANCE hInst) {
         L"Limpar logs", BTN_STYLE_SECONDARY,
         CONTENT_PAD + CFG_INNER + CFG_LOG_BTN_W + 8, logBtnY, CFG_LOG_BTN_W, BTN_H);
 
+    int bkpBtnY = CFG_BKP_Y + CFG_HDR_H + CFG_INNER;
+    s_hwndBtnExport = buttons_create(parent, hInst, IDC_BTN_BACKUP_EXPORT,
+        L"Exportar configuração", BTN_STYLE_SECONDARY,
+        CONTENT_PAD + CFG_INNER, bkpBtnY, CFG_BKP_BTN_W, BTN_H);
+    s_hwndBtnImport = buttons_create(parent, hInst, IDC_BTN_BACKUP_IMPORT,
+        L"Importar configuração", BTN_STYLE_SECONDARY,
+        CONTENT_PAD + CFG_INNER + CFG_BKP_BTN_W + 8, bkpBtnY, CFG_BKP_BTN_W, BTN_H);
+
     s_hwndSave = buttons_create(parent, hInst, IDC_BTN_CFG_SAVE,
                                 L"Salvar", BTN_STYLE_PRIMARY,
                                 CFG_SAVE_X, CFG_BTN_Y, BTN_W, BTN_H);
@@ -213,6 +361,8 @@ void settings_tab_show(BOOL visible) {
     ShowWindow(s_hwndCmbAutoClean,    cmd);
     ShowWindow(s_hwndBtnLogOpen,      cmd);
     ShowWindow(s_hwndBtnLogClear,     cmd);
+    ShowWindow(s_hwndBtnExport,       cmd);
+    ShowWindow(s_hwndBtnImport,       cmd);
     ShowWindow(s_hwndSave,            cmd);
     ShowWindow(s_hwndDiscard,         cmd);
 }
@@ -333,6 +483,32 @@ void settings_tab_paint(HDC dc) {
     DrawTextW(dc, L"Limpar logs automaticamente após:", -1, &rcLbl,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SelectObject(dc, ofLbl);
+
+    RECT rcBkp = {CONTENT_PAD, CFG_BKP_Y,
+                  CONTENT_PAD + CFG_LOG_W, CFG_BKP_Y + CFG_BKP_H};
+    FillRect(dc, &rcBkp, g_hbrCard);
+    HBRUSH hbrdBkp = CreateSolidBrush(CLR_BORDER);
+    FrameRect(dc, &rcBkp, hbrdBkp);
+    DeleteObject(hbrdBkp);
+
+    if (g_icoSync20)
+        DrawIconEx(dc, CONTENT_PAD + CFG_INNER, CFG_BKP_Y + (CFG_HDR_H - 20) / 2,
+                   g_icoSync20, 20, 20, 0, NULL, DI_NORMAL);
+
+    SetBkMode(dc, TRANSPARENT);
+    HFONT ofBkp = (HFONT)SelectObject(dc, g_fontSubtitle);
+    SetTextColor(dc, CLR_TEXT_PRIMARY);
+    RECT rtBkp = {CONTENT_PAD + CFG_INNER + 26, CFG_BKP_Y + CFG_INNER,
+                  CONTENT_PAD + CFG_LOG_W - CFG_INNER, CFG_BKP_Y + CFG_INNER + 20};
+    DrawTextW(dc, L"Backup", -1, &rtBkp, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, ofBkp);
+
+    HPEN hpBkp = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN opBkp = (HPEN)SelectObject(dc, hpBkp);
+    MoveToEx(dc, CONTENT_PAD + 1, CFG_BKP_Y + CFG_HDR_H - 1, NULL);
+    LineTo(dc, CONTENT_PAD + CFG_LOG_W - 1, CFG_BKP_Y + CFG_HDR_H - 1);
+    SelectObject(dc, opBkp);
+    DeleteObject(hpBkp);
 }
 
 static void restart_spooler(void) {
@@ -499,6 +675,15 @@ BOOL settings_tab_command(UINT id) {
         if (hf != INVALID_HANDLE_VALUE) CloseHandle(hf);
         return TRUE;
     }
+    if (id == IDC_BTN_BACKUP_EXPORT) {
+        do_export();
+        return TRUE;
+    }
+    if (id == IDC_BTN_BACKUP_IMPORT) {
+        import_config_run(s_hwndParent);
+        settings_tab_load(); // recarrega a UI porque o import pode ter mudado agentAutoStart, gsPath etc.
+        return TRUE;
+    }
     return FALSE;
 }
 
@@ -546,8 +731,10 @@ BOOL settings_tab_drawitem(DRAWITEMSTRUCT *dis) {
         dis->CtlID == IDC_BTN_GS_CHANGE    ||
         dis->CtlID == IDC_BTN_GS_TEST)
         return buttons_draw(dis, BTN_STYLE_SECONDARY);
-    if (dis->CtlID == IDC_BTN_LOG_OPEN  ||
-        dis->CtlID == IDC_BTN_LOG_CLEAR)
+    if (dis->CtlID == IDC_BTN_LOG_OPEN    ||
+        dis->CtlID == IDC_BTN_LOG_CLEAR   ||
+        dis->CtlID == IDC_BTN_BACKUP_EXPORT ||
+        dis->CtlID == IDC_BTN_BACKUP_IMPORT)
         return buttons_draw(dis, BTN_STYLE_SECONDARY);
     return FALSE;
 }

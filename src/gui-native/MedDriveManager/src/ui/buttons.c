@@ -84,8 +84,10 @@ BOOL buttons_draw(DRAWITEMSTRUCT *dis, BtnStyle style) {
     case 102: ico = g_icoAdd20;      break; /* IDC_BTN_ADD        */
     case 103: ico = g_icoDelete20;   break; /* IDC_BTN_REMOVE     */
     case 105: ico = g_icoSync20;     break; /* IDC_BTN_REFRESH    */
-    case 141: ico = g_icoFolder20;   break; /* IDC_BTN_LOG_OPEN  */
-    case 142: ico = g_icoDelete20;   break; /* IDC_BTN_LOG_CLEAR */
+    case 141: ico = g_icoFolder20;   break; /* IDC_BTN_LOG_OPEN          */
+    case 142: ico = g_icoDelete20;   break; /* IDC_BTN_LOG_CLEAR         */
+    case 150: ico = g_icoFolder20;   break; /* IDC_BTN_BACKUP_EXPORT     */
+    case 151: ico = g_icoSync20;     break; /* IDC_BTN_BACKUP_IMPORT     */
     }
 
     wchar_t txt[64] = {0};

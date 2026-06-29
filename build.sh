@@ -36,6 +36,7 @@ $MINGW-gcc $DEFS $INC -c "$SRC/ui/statusbar.c"        -o "$TMP/ui_statusbar.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/ui/buttons.c"          -o "$TMP/ui_buttons.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/settings/settings.c"       -o "$TMP/settings.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/settings/settings_tab.c"  -o "$TMP/settings_tab.o"
+$MINGW-gcc $DEFS $INC -c "$SRC/settings/import_config.c" -o "$TMP/import_config.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/profiles/profiles_tab.c"  -o "$TMP/profiles_tab.o"
 $MINGW-gcc $DEFS $INC -c "$SRC/printers/printers_tab.c"  -o "$TMP/printers_tab.o"
 
@@ -49,7 +50,8 @@ $MINGW-gcc -mwindows \
     "$TMP/dlg_progress.o" "$TMP/dlg_profile.o" "$TMP/store.o" \
     "$TMP/ui_theme.o" "$TMP/ui_titlebar.o" "$TMP/ui_navbar.o" \
     "$TMP/ui_listview.o" "$TMP/ui_statusbar.o" "$TMP/ui_buttons.o" \
-    "$TMP/settings.o" "$TMP/settings_tab.o" "$TMP/profiles_tab.o" "$TMP/printers_tab.o" \
+    "$TMP/settings.o" "$TMP/settings_tab.o" "$TMP/import_config.o" \
+    "$TMP/profiles_tab.o" "$TMP/printers_tab.o" \
     "$TMP/app_res.o" \
     -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool -ldwmapi \
     -o "$OUT/MedDriveManager.exe"
