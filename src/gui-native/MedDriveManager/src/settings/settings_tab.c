@@ -586,6 +586,16 @@ void settings_tab_paint(HDC dc) {
     IntersectClipRect(dc, 0, TITLEBAR_H + NAVBAR_H,
                       WIN_W - CFG_SCROLLBAR_W, WIN_H - STATUSBAR_H - BTNBAR_H);
     int off  = -s_scrollY;
+
+    /* Título da aba, rolável com o conteúdo */
+    int subY = TITLEBAR_H + NAVBAR_H + 6 + off;
+    SetTextColor(dc, CLR_ACCENT);
+    SetBkMode(dc, TRANSPARENT);
+    HFONT ofSub = (HFONT)SelectObject(dc, g_fontSmall);
+    RECT rcSubCfg = {CONTENT_PAD, subY, WIN_W - CFG_SCROLLBAR_W - CONTENT_PAD, subY + SUBTITLE_H};
+    DrawTextW(dc, L"CONFIGURAÇÕES", -1, &rcSubCfg, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, ofSub);
+
     int cardX = CONTENT_PAD;
     int cardY = CFG_CARD_Y + off;
     int logY  = CFG_LOG_Y  + off;

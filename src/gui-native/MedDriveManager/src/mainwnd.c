@@ -128,16 +128,17 @@ static void on_paint(HWND hwnd) {
     RECT rcContent = {0, contentTop, w, contentBot};
     FillRect(dc, &rcContent, g_hbrPrimary);
 
-    /* Cabeçalho de seção */
-    const wchar_t *sub = (g_activeTab == 0) ? L"PERFIS DE IMPRESSÃO"
-                       : (g_activeTab == 1) ? L"IMPRESSORAS CADASTRADAS"
-                                            : L"CONFIGURAÇÕES";
-    SetTextColor(dc, CLR_ACCENT);
-    SetBkMode(dc, TRANSPARENT);
-    HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
-    RECT rcSub = {CONTENT_PAD, contentTop + 6, w - CONTENT_PAD, contentTop + SUBTITLE_H};
-    DrawTextW(dc, sub, -1, &rcSub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-    SelectObject(dc, of);
+    /* Cabeçalho de seção — configurações pinta o próprio com scroll */
+    if (g_activeTab != 2) {
+        const wchar_t *sub = (g_activeTab == 0) ? L"PERFIS DE IMPRESSÃO"
+                                                : L"IMPRESSORAS CADASTRADAS";
+        SetTextColor(dc, CLR_ACCENT);
+        SetBkMode(dc, TRANSPARENT);
+        HFONT of = (HFONT)SelectObject(dc, g_fontSmall);
+        RECT rcSub = {CONTENT_PAD, contentTop + 6, w - CONTENT_PAD, contentTop + SUBTITLE_H};
+        DrawTextW(dc, sub, -1, &rcSub, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        SelectObject(dc, of);
+    }
 
     if (g_activeTab == 0)
         profiles_tab_paint(dc, w);
