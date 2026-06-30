@@ -3,6 +3,13 @@
 
 ## Regras de trabalho
 
+**Sempre pergunte o nome das variáveis antes de implementar.**
+Nunca invente nomes de variáveis, campos de struct, chaves de INI ou identificadores de controle. Apresente a proposta de nome e aguarde aprovação antes de usar no código.
+
+**Sempre utilize duas skills em qualquer coisa que for escrever o código**
+- skill /karpathy-guidelines 
+- skill /ponytail 
+
 **Nunca modifique código sem pedir permissão ao usuário antes.**
 Apresente a proposta, aguarde aprovação explícita, só então edite os arquivos.
 

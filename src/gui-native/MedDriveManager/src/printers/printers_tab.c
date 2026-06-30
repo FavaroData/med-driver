@@ -274,3 +274,11 @@ const PrinterEntry* printers_tab_get(int *out_count) {
     if (out_count) *out_count = s_count;
     return s_printers;
 }
+
+void printers_tab_enable(BOOL enabled) {
+    EnableWindow(s_hwndList,            enabled);
+    EnableWindow(s_hwndBtnAdd,          enabled);
+    EnableWindow(s_hwndBtnRemove,       enabled);
+    EnableWindow(s_hwndBtnEditPrinter,  enabled);
+    EnableWindow(s_hwndBtnRefresh,      enabled);
+}

@@ -551,3 +551,11 @@ const ProfileEntry* profiles_tab_get(int *out_count) {
     if (out_count) *out_count = s_count;
     return s_profiles;
 }
+
+void profiles_tab_enable(BOOL enabled) {
+    EnableWindow(s_hwndCombo,   enabled);
+    EnableWindow(s_hwndBtnNew,  enabled);
+    EnableWindow(s_hwndBtnEdit, enabled);
+    EnableWindow(s_hwndBtnDup,  enabled);
+    EnableWindow(s_hwndBtnDel,  enabled);
+}

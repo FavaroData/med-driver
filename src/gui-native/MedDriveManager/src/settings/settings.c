@@ -46,6 +46,8 @@ void settings_load(AppSettings *out) {
     get_ini_path(ini, MAX_PATH);
     out->requireAgentRunning =
         (GetPrivateProfileIntW(INI_SECT, L"RequireAgentRunning", 0, ini) != 0);
+    out->bloquearAplicacao =
+        (GetPrivateProfileIntW(L"Segurança", L"bloquearAplicacao", 0, ini) != 0);
 
     ExpandEnvironmentStringsW(GS_DEFAULT, out->gsPath, MAX_PATH);
     GetPrivateProfileStringW(INI_SECT_GS, L"ExecutablePath",
@@ -105,6 +107,8 @@ BOOL settings_save(const AppSettings *s) {
     WritePrivateProfileStringW(INI_SECT, L"RequireAgentRunning",
                                s->requireAgentRunning ? L"1" : L"0", ini);
     WritePrivateProfileStringW(INI_SECT_GS, L"ExecutablePath", s->gsPath, ini);
+    WritePrivateProfileStringW(L"Segurança", L"bloquearAplicacao",
+                               s->bloquearAplicacao ? L"1" : L"0", ini);
 
     /* atualiza GhostscriptPath no registry de todos os perfis existentes */
     HKEY hPorts;

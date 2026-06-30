@@ -8,6 +8,7 @@
 #include "settings_tab.h"
 #include "settings.h"
 #include "import_config.h"
+#include "../dialogs/dlg_password.h"
 #include "../store.h"
 #include "../ui/theme.h"
 #include "../ui/buttons.h"
@@ -21,7 +22,6 @@
 #define CFG_HDR_H    45
 #define CFG_CHK_H    22
 #define CFG_CHK_GAP  11
-#define CFG_CARD_H   (CFG_HDR_H + CFG_INNER + CFG_CHK_H + CFG_CHK_GAP + CFG_CHK_H + CFG_INNER)
 #define CFG_BTN_Y    (WIN_H - STATUSBAR_H - BTNBAR_H + (BTNBAR_H - BTN_H) / 2)
 #define CFG_SAVE_X   (WIN_W - CONTENT_PAD - BTN_W)
 #define CFG_DISC_X   (CFG_SAVE_X - 8 - BTN_W)
@@ -32,6 +32,7 @@
 #define CFG_GS_PATH_H 20
 #define CFG_GS_BTN_W  90
 #define CFG_GS_INNER  5
+#define CFG_CARD_H   (CFG_HDR_H + CFG_INNER + CFG_CHK_H + CFG_CHK_GAP + CFG_CHK_H + CFG_INNER)
 #define CFG_GS_CARD_H CFG_CARD_H
 
 /* card Logs: fica abaixo dos dois cards de cima, com 16px de respiro entre eles.
@@ -55,6 +56,18 @@
 #define CFG_BKP_BTN_W 175
 #define CFG_BKP_H     (CFG_HDR_H + CFG_INNER + BTN_H + CFG_INNER)
 
+/* card Segurança: abaixo do Backup.
+   Contem um checkbox e dois botoes na linha seguinte. */
+#define CFG_SEC_Y       (CFG_BKP_Y + CFG_BKP_H + 16)
+#define CFG_SEC_BTN_W   175
+#define CFG_SEC_H       (CFG_HDR_H + CFG_INNER + CFG_CHK_H + 8 + BTN_H + CFG_INNER)
+
+/* altura total do conteudo scrollavel (fundo do ultimo card + respiro) */
+#define CFG_CONTENT_BOTTOM (CFG_SEC_Y + CFG_SEC_H + 8)
+
+/* largura da coluna do scrollbar lateral */
+#define CFG_SCROLLBAR_W 18
+
 static HWND        s_hwndParent;
 static HWND        s_hwndChk;
 static HWND        s_hwndChkRequireAgent;
@@ -68,10 +81,23 @@ static HWND        s_hwndBtnLogClear;
 /* controles do card Backup */
 static HWND        s_hwndBtnExport;
 static HWND        s_hwndBtnImport;
+/* controles do card Segurança */
+static HWND        s_hwndChkBloquear;
+static HWND        s_hwndBtnDesbloquear;
+/* scrollbar lateral da aba Configuracoes */
+static HWND        s_hwndScrollbar;
 static HWND        s_hwndSave;
 static HWND        s_hwndDiscard;
 static AppSettings s_saved;
 static AppSettings s_pending;
+/* estado de bloqueio da sessao atual */
+static BOOL        s_bloquearAplicacao = FALSE;
+static BOOL        s_desbloqueado      = FALSE;
+/* callback registrado pelo mainwnd para habilitar/desabilitar as outras abas */
+static void (*s_on_unlock_cb)(BOOL) = NULL;
+/* posicao atual do scroll (px) */
+static int         s_scrollY = 0;
+static BOOL        s_tabVisible = FALSE;
 
 /*
  * log_autoclean_load: le do INI quantos dias devem passar antes de o log ser limpo.
@@ -136,6 +162,128 @@ static void log_autoclean_check(void) {
     }
 }
 
+/* ── Scroll ──────────────────────────────────────────────────────────────── */
+
+/* move o controle e oculta-o se estiver fora da area de conteudo visivel.
+   bRepaint=FALSE: sem repintura imediata — o RedrawWindow em do_scroll limpa tudo de vez */
+static void move_ctrl(HWND h, int x, int y, int w, int hh) {
+    MoveWindow(h, x, y, w, hh, FALSE);
+    if (s_tabVisible)
+        ShowWindow(h, (y >= TITLEBAR_H + NAVBAR_H && y + hh <= WIN_H - STATUSBAR_H - BTNBAR_H)
+                      ? SW_SHOW : SW_HIDE);
+}
+
+static void reposition_controls(void) {
+    int dy = -s_scrollY;
+
+    move_ctrl(s_hwndChk,
+        CONTENT_PAD + CFG_INNER,
+        CFG_CARD_Y + CFG_HDR_H + CFG_INNER + dy,
+        CFG_COL_W - CFG_INNER * 2, CFG_CHK_H);
+    move_ctrl(s_hwndChkRequireAgent,
+        CONTENT_PAD + CFG_INNER,
+        CFG_CARD_Y + CFG_HDR_H + CFG_INNER + CFG_CHK_H + CFG_CHK_GAP + dy,
+        CFG_COL_W - CFG_INNER * 2, CFG_CHK_H);
+    move_ctrl(s_hwndGsPath,
+        CFG_GS_X + CFG_INNER,
+        CFG_CARD_Y + CFG_HDR_H + CFG_GS_INNER + dy,
+        CFG_GS_W - CFG_INNER * 2, CFG_GS_PATH_H);
+    int gsBtnY = CFG_CARD_Y + CFG_HDR_H + CFG_GS_INNER + CFG_GS_PATH_H + CFG_CHK_GAP;
+    move_ctrl(s_hwndBtnGsChange,
+        CFG_GS_X + CFG_INNER, gsBtnY + dy, CFG_GS_BTN_W, BTN_H);
+    move_ctrl(s_hwndBtnGsTest,
+        CFG_GS_X + CFG_INNER + CFG_GS_BTN_W + 8, gsBtnY + dy, CFG_GS_BTN_W, BTN_H);
+
+    int logLblY = CFG_LOG_Y + CFG_HDR_H + CFG_INNER;
+    int logCmbY = logLblY + CFG_LOG_LBL_H + 4;
+    int logBtnY = logCmbY + CFG_LOG_CMB_H + 8;
+    move_ctrl(s_hwndCmbAutoClean,
+        CONTENT_PAD + CFG_INNER, logCmbY + dy, CFG_LOG_CMB_W, 120);
+    move_ctrl(s_hwndBtnLogOpen,
+        CONTENT_PAD + CFG_INNER, logBtnY + dy, CFG_LOG_BTN_W, BTN_H);
+    move_ctrl(s_hwndBtnLogClear,
+        CONTENT_PAD + CFG_INNER + CFG_LOG_BTN_W + 8, logBtnY + dy, CFG_LOG_BTN_W, BTN_H);
+
+    int bkpBtnY = CFG_BKP_Y + CFG_HDR_H + CFG_INNER;
+    move_ctrl(s_hwndBtnExport,
+        CONTENT_PAD + CFG_INNER, bkpBtnY + dy, CFG_BKP_BTN_W, BTN_H);
+    move_ctrl(s_hwndBtnImport,
+        CONTENT_PAD + CFG_INNER + CFG_BKP_BTN_W + 8, bkpBtnY + dy, CFG_BKP_BTN_W, BTN_H);
+
+    int secChkY = CFG_SEC_Y + CFG_HDR_H + CFG_INNER;
+    int secBtnY = secChkY + CFG_CHK_H + 8;
+    move_ctrl(s_hwndChkBloquear,
+        CONTENT_PAD + CFG_INNER, secChkY + dy,
+        CFG_LOG_W - CFG_INNER * 2, CFG_CHK_H);
+    move_ctrl(s_hwndBtnDesbloquear,
+        CONTENT_PAD + CFG_INNER, secBtnY + dy, CFG_SEC_BTN_W, BTN_H);
+}
+
+static void do_scroll(int newY) {
+    int maxY = CFG_CONTENT_BOTTOM - (WIN_H - STATUSBAR_H - BTNBAR_H);
+    if (maxY < 0) maxY = 0;
+    if (newY < 0) newY = 0;
+    if (newY > maxY) newY = maxY;
+    if (newY == s_scrollY) return;
+    s_scrollY = newY;
+    SCROLLINFO si = {sizeof(si), SIF_POS, 0, 0, 0, s_scrollY, 0};
+    SetScrollInfo(s_hwndScrollbar, SB_CTL, &si, TRUE);
+    reposition_controls();
+    /* RDW_UPDATENOW: repinta pai e filhos sincronamente, eliminando ghost de posicao antiga */
+    RedrawWindow(s_hwndParent, NULL, NULL,
+                 RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+}
+
+void settings_tab_vscroll(WPARAM wp) {
+    SCROLLINFO si = {sizeof(si), SIF_ALL};
+    GetScrollInfo(s_hwndScrollbar, SB_CTL, &si);
+    switch (LOWORD(wp)) {
+    case SB_LINEUP:        do_scroll(si.nPos - 20);          break;
+    case SB_LINEDOWN:      do_scroll(si.nPos + 20);          break;
+    case SB_PAGEUP:        do_scroll(si.nPos - 100);         break;
+    case SB_PAGEDOWN:      do_scroll(si.nPos + 100);         break;
+    case SB_THUMBTRACK:
+    case SB_THUMBPOSITION: do_scroll((int)(short)HIWORD(wp)); break;
+    }
+}
+
+void settings_tab_mousewheel(int delta) {
+    do_scroll(s_scrollY - delta / 3);
+}
+
+/* ── Lock ────────────────────────────────────────────────────────────────── */
+
+static void update_lock_ui(void) {
+    BOOL locked = s_bloquearAplicacao && !s_desbloqueado;
+    SetWindowTextW(s_hwndBtnDesbloquear,
+        (s_bloquearAplicacao && s_desbloqueado) ? L"Desbloqueado" : L"Desbloquear Alterações");
+    EnableWindow(s_hwndBtnDesbloquear, locked);
+    EnableWindow(s_hwndChkBloquear,    !locked);
+}
+
+void settings_tab_enable(BOOL enabled) {
+    EnableWindow(s_hwndChk,             enabled);
+    EnableWindow(s_hwndChkRequireAgent, enabled);
+    EnableWindow(s_hwndBtnGsChange,     enabled);
+    EnableWindow(s_hwndBtnGsTest,       enabled);
+    EnableWindow(s_hwndCmbAutoClean,    enabled);
+    EnableWindow(s_hwndBtnLogOpen,      enabled);
+    EnableWindow(s_hwndBtnLogClear,     enabled);
+    EnableWindow(s_hwndBtnExport,   enabled);
+    EnableWindow(s_hwndBtnImport,   enabled);
+    EnableWindow(s_hwndSave,        enabled);
+    EnableWindow(s_hwndDiscard,     enabled);
+    update_lock_ui();
+}
+
+BOOL settings_tab_is_locked(void) {
+    return s_bloquearAplicacao && !s_desbloqueado;
+}
+
+void settings_tab_set_on_unlock(void (*cb)(BOOL enabled)) {
+    s_on_unlock_cb = cb;
+}
+
 static int ja(wchar_t *j, int p, int cap, const wchar_t *s) {
     int l = (int)wcslen(s);
     if (p + l < cap) memcpy(j + p, s, (size_t)l * sizeof(wchar_t));
@@ -161,7 +309,7 @@ static void do_export(void) {
 
     // dialogo primeiro: se o usuario cancelar nao lemos nada do sistema
     OPENFILENAMEW ofn = {sizeof(ofn)};
-    wchar_t path[MAX_PATH] = L"meddrive-backup.json";
+    wchar_t path[MAX_PATH] = L"meddrive-printer-backup.json";
     ofn.hwndOwner   = s_hwndParent;
     ofn.lpstrFilter = L"JSON\0*.json\0\0";
     ofn.lpstrFile   = path;
@@ -267,6 +415,11 @@ static void do_export(void) {
 void settings_tab_create(HWND parent, HINSTANCE hInst) {
     s_hwndParent = parent;
 
+    /* carrega estado inicial de bloqueio; s_desbloqueado começa FALSE (sessão começa bloqueada) */
+    AppSettings initS;
+    settings_load(&initS);
+    s_bloquearAplicacao = initS.bloquearAplicacao;
+
     /* verifica na inicializacao se o log precisa ser limpo, antes de criar qualquer controle */
     log_autoclean_check();
 
@@ -338,6 +491,26 @@ void settings_tab_create(HWND parent, HINSTANCE hInst) {
         L"Importar configuração", BTN_STYLE_SECONDARY,
         CONTENT_PAD + CFG_INNER + CFG_BKP_BTN_W + 8, bkpBtnY, CFG_BKP_BTN_W, BTN_H);
 
+    int secChkY = CFG_SEC_Y + CFG_HDR_H + CFG_INNER;
+    s_hwndChkBloquear = CreateWindowExW(0, L"BUTTON",
+        L"Bloquear alterações",
+        WS_CHILD | BS_AUTOCHECKBOX,
+        CONTENT_PAD + CFG_INNER, secChkY,
+        CFG_LOG_W - CFG_INNER * 2, CFG_CHK_H,
+        parent, (HMENU)(UINT_PTR)IDC_CHK_BLOQUEAR_APP, hInst, NULL);
+    SendMessageW(s_hwndChkBloquear, WM_SETFONT, (WPARAM)g_fontContent, FALSE);
+
+    int secBtnY = secChkY + CFG_CHK_H + 8;
+    s_hwndBtnDesbloquear = buttons_create(parent, hInst, IDC_BTN_DESBLOQUEAR,
+        L"Desbloquear Alterações", BTN_STYLE_SECONDARY,
+        CONTENT_PAD + CFG_INNER, secBtnY, CFG_SEC_BTN_W, BTN_H);
+
+    s_hwndScrollbar = CreateWindowExW(0, L"SCROLLBAR", NULL,
+        WS_CHILD | SBS_VERT,
+        WIN_W - CFG_SCROLLBAR_W, TITLEBAR_H + NAVBAR_H,
+        CFG_SCROLLBAR_W, WIN_H - TITLEBAR_H - NAVBAR_H - STATUSBAR_H - BTNBAR_H,
+        parent, (HMENU)(UINT_PTR)IDC_SETTINGS_SCROLL, hInst, NULL);
+
     s_hwndSave = buttons_create(parent, hInst, IDC_BTN_CFG_SAVE,
                                 L"Salvar", BTN_STYLE_PRIMARY,
                                 CFG_SAVE_X, CFG_BTN_Y, BTN_W, BTN_H);
@@ -352,29 +525,49 @@ void settings_tab_create(HWND parent, HINSTANCE hInst) {
  * fazem parte da mesma aba, entao aparecem e somem junto com o restante.
  */
 void settings_tab_show(BOOL visible) {
-    int cmd = visible ? SW_SHOW : SW_HIDE;
-    ShowWindow(s_hwndChk,             cmd);
-    ShowWindow(s_hwndChkRequireAgent, cmd);
-    ShowWindow(s_hwndGsPath,          cmd);
-    ShowWindow(s_hwndBtnGsChange,     cmd);
-    ShowWindow(s_hwndBtnGsTest,       cmd);
-    ShowWindow(s_hwndCmbAutoClean,    cmd);
-    ShowWindow(s_hwndBtnLogOpen,      cmd);
-    ShowWindow(s_hwndBtnLogClear,     cmd);
-    ShowWindow(s_hwndBtnExport,       cmd);
-    ShowWindow(s_hwndBtnImport,       cmd);
-    ShowWindow(s_hwndSave,            cmd);
-    ShowWindow(s_hwndDiscard,         cmd);
+    s_tabVisible = visible;
+    if (!visible) {
+        ShowWindow(s_hwndChk,             SW_HIDE);
+        ShowWindow(s_hwndChkRequireAgent, SW_HIDE);
+        ShowWindow(s_hwndGsPath,          SW_HIDE);
+        ShowWindow(s_hwndBtnGsChange,     SW_HIDE);
+        ShowWindow(s_hwndBtnGsTest,       SW_HIDE);
+        ShowWindow(s_hwndCmbAutoClean,    SW_HIDE);
+        ShowWindow(s_hwndBtnLogOpen,      SW_HIDE);
+        ShowWindow(s_hwndBtnLogClear,     SW_HIDE);
+        ShowWindow(s_hwndBtnExport,       SW_HIDE);
+        ShowWindow(s_hwndBtnImport,       SW_HIDE);
+        ShowWindow(s_hwndChkBloquear,    SW_HIDE);
+        ShowWindow(s_hwndBtnDesbloquear, SW_HIDE);
+        ShowWindow(s_hwndScrollbar,       SW_HIDE);
+        ShowWindow(s_hwndSave,            SW_HIDE);
+        ShowWindow(s_hwndDiscard,         SW_HIDE);
+        return;
+    }
+    /* scrollbar, save e discard ficam fora da area scrollavel */
+    ShowWindow(s_hwndScrollbar, SW_SHOW);
+    ShowWindow(s_hwndSave,      SW_SHOW);
+    ShowWindow(s_hwndDiscard,   SW_SHOW);
+    int maxY = CFG_CONTENT_BOTTOM - (WIN_H - STATUSBAR_H - BTNBAR_H);
+    if (maxY < 0) maxY = 0;
+    SCROLLINFO si = {sizeof(si), SIF_RANGE | SIF_POS};
+    si.nMin = 0; si.nMax = maxY; si.nPos = s_scrollY;
+    SetScrollInfo(s_hwndScrollbar, SB_CTL, &si, TRUE);
+    reposition_controls(); /* mostra/oculta cada controle com base na posicao */
 }
 
 void settings_tab_load(void) {
     settings_load(&s_saved);
     s_pending = s_saved;
+    s_bloquearAplicacao = s_saved.bloquearAplicacao;
     SendMessageW(s_hwndChk, BM_SETCHECK,
                  s_pending.agentAutoStart ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(s_hwndChkRequireAgent, BM_SETCHECK,
                  s_pending.requireAgentRunning ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(s_hwndChkBloquear, BM_SETCHECK,
+                 s_bloquearAplicacao ? BST_CHECKED : BST_UNCHECKED, 0);
     SetWindowTextW(s_hwndGsPath, s_pending.gsPath);
+    update_lock_ui();
 
     /* define a selecao inicial do combobox de limpeza automatica de acordo com o que
        esta salvo no INI. kDays mapeia indice do combobox para numero de dias.
@@ -386,8 +579,18 @@ void settings_tab_load(void) {
 }
 
 void settings_tab_paint(HDC dc) {
+    int saved = SaveDC(dc);
+    /* clip para a area de conteudo, excluindo a coluna do scrollbar.
+       IntersectClipRect usa coordenadas logicas do DC — sem transformacoes ativas,
+       logico == device, sem ambiguidade de SetWindowOrgEx. */
+    IntersectClipRect(dc, 0, TITLEBAR_H + NAVBAR_H,
+                      WIN_W - CFG_SCROLLBAR_W, WIN_H - STATUSBAR_H - BTNBAR_H);
+    int off  = -s_scrollY;
     int cardX = CONTENT_PAD;
-    int cardY = CFG_CARD_Y;
+    int cardY = CFG_CARD_Y + off;
+    int logY  = CFG_LOG_Y  + off;
+    int bkpY  = CFG_BKP_Y  + off;
+    int secY  = CFG_SEC_Y  + off;
 
     RECT rc = {cardX, cardY, cardX + CFG_COL_W, cardY + CFG_CARD_H};
     FillRect(dc, &rc, g_hbrCard);
@@ -449,66 +652,91 @@ void settings_tab_paint(HDC dc) {
        O rotulo "Limpar logs automaticamente apos:" fica na mesma linha do combobox
        mas e desenhado aqui porque e texto estatico, nao um controle Win32.
        O combobox em si e uma janela normal e se desenha sozinho. */
-    RECT rcLog = {CONTENT_PAD, CFG_LOG_Y,
-                  CONTENT_PAD + CFG_LOG_W, CFG_LOG_Y + CFG_LOG_H};
+    RECT rcLog = {CONTENT_PAD, logY,
+                  CONTENT_PAD + CFG_LOG_W, logY + CFG_LOG_H};
     FillRect(dc, &rcLog, g_hbrCard);
     HBRUSH hbrdLog = CreateSolidBrush(CLR_BORDER);
     FrameRect(dc, &rcLog, hbrdLog);
     DeleteObject(hbrdLog);
 
     if (g_icoDocument16)
-        DrawIconEx(dc, CONTENT_PAD + CFG_INNER, CFG_LOG_Y + (CFG_HDR_H - 16) / 2,
+        DrawIconEx(dc, CONTENT_PAD + CFG_INNER, logY + (CFG_HDR_H - 16) / 2,
                    g_icoDocument16, 16, 16, 0, NULL, DI_NORMAL);
 
     SetBkMode(dc, TRANSPARENT);
     HFONT ofLog = (HFONT)SelectObject(dc, g_fontSubtitle);
     SetTextColor(dc, CLR_TEXT_PRIMARY);
-    RECT rtLog = {CONTENT_PAD + CFG_INNER + 22, CFG_LOG_Y + CFG_INNER,
-                  CONTENT_PAD + CFG_LOG_W - CFG_INNER, CFG_LOG_Y + CFG_INNER + 20};
+    RECT rtLog = {CONTENT_PAD + CFG_INNER + 22, logY + CFG_INNER,
+                  CONTENT_PAD + CFG_LOG_W - CFG_INNER, logY + CFG_INNER + 20};
     DrawTextW(dc, L"Logs", -1, &rtLog, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SelectObject(dc, ofLog);
 
     HPEN hpLog = CreatePen(PS_SOLID, 1, CLR_BORDER);
     HPEN opLog = (HPEN)SelectObject(dc, hpLog);
-    MoveToEx(dc, CONTENT_PAD + 1, CFG_LOG_Y + CFG_HDR_H - 1, NULL);
-    LineTo(dc,   CONTENT_PAD + CFG_LOG_W - 1, CFG_LOG_Y + CFG_HDR_H - 1);
+    MoveToEx(dc, CONTENT_PAD + 1, logY + CFG_HDR_H - 1, NULL);
+    LineTo(dc,   CONTENT_PAD + CFG_LOG_W - 1, logY + CFG_HDR_H - 1);
     SelectObject(dc, opLog);
     DeleteObject(hpLog);
 
     SetTextColor(dc, CLR_TEXT_PRIMARY);
     HFONT ofLbl = (HFONT)SelectObject(dc, g_fontContent);
-    int logRowY = CFG_LOG_Y + CFG_HDR_H + CFG_INNER;
+    int logRowY = logY + CFG_HDR_H + CFG_INNER;
     RECT rcLbl = {CONTENT_PAD + CFG_INNER, logRowY,
                   CONTENT_PAD + CFG_LOG_W - CFG_INNER, logRowY + CFG_LOG_LBL_H};
     DrawTextW(dc, L"Limpar logs automaticamente após:", -1, &rcLbl,
               DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SelectObject(dc, ofLbl);
 
-    RECT rcBkp = {CONTENT_PAD, CFG_BKP_Y,
-                  CONTENT_PAD + CFG_LOG_W, CFG_BKP_Y + CFG_BKP_H};
+    RECT rcBkp = {CONTENT_PAD, bkpY,
+                  CONTENT_PAD + CFG_LOG_W, bkpY + CFG_BKP_H};
     FillRect(dc, &rcBkp, g_hbrCard);
     HBRUSH hbrdBkp = CreateSolidBrush(CLR_BORDER);
     FrameRect(dc, &rcBkp, hbrdBkp);
     DeleteObject(hbrdBkp);
 
     if (g_icoSync20)
-        DrawIconEx(dc, CONTENT_PAD + CFG_INNER, CFG_BKP_Y + (CFG_HDR_H - 20) / 2,
+        DrawIconEx(dc, CONTENT_PAD + CFG_INNER, bkpY + (CFG_HDR_H - 20) / 2,
                    g_icoSync20, 20, 20, 0, NULL, DI_NORMAL);
 
     SetBkMode(dc, TRANSPARENT);
     HFONT ofBkp = (HFONT)SelectObject(dc, g_fontSubtitle);
     SetTextColor(dc, CLR_TEXT_PRIMARY);
-    RECT rtBkp = {CONTENT_PAD + CFG_INNER + 26, CFG_BKP_Y + CFG_INNER,
-                  CONTENT_PAD + CFG_LOG_W - CFG_INNER, CFG_BKP_Y + CFG_INNER + 20};
+    RECT rtBkp = {CONTENT_PAD + CFG_INNER + 26, bkpY + CFG_INNER,
+                  CONTENT_PAD + CFG_LOG_W - CFG_INNER, bkpY + CFG_INNER + 20};
     DrawTextW(dc, L"Backup", -1, &rtBkp, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     SelectObject(dc, ofBkp);
 
     HPEN hpBkp = CreatePen(PS_SOLID, 1, CLR_BORDER);
     HPEN opBkp = (HPEN)SelectObject(dc, hpBkp);
-    MoveToEx(dc, CONTENT_PAD + 1, CFG_BKP_Y + CFG_HDR_H - 1, NULL);
-    LineTo(dc, CONTENT_PAD + CFG_LOG_W - 1, CFG_BKP_Y + CFG_HDR_H - 1);
+    MoveToEx(dc, CONTENT_PAD + 1, bkpY + CFG_HDR_H - 1, NULL);
+    LineTo(dc, CONTENT_PAD + CFG_LOG_W - 1, bkpY + CFG_HDR_H - 1);
     SelectObject(dc, opBkp);
     DeleteObject(hpBkp);
+
+    /* ── Card Segurança ─────────────────────────────────────────────────────── */
+    RECT rcSec = {CONTENT_PAD, secY,
+                  CONTENT_PAD + CFG_LOG_W, secY + CFG_SEC_H};
+    FillRect(dc, &rcSec, g_hbrCard);
+    HBRUSH hbrdSec = CreateSolidBrush(CLR_BORDER);
+    FrameRect(dc, &rcSec, hbrdSec);
+    DeleteObject(hbrdSec);
+
+    SetBkMode(dc, TRANSPARENT);
+    HFONT ofSec = (HFONT)SelectObject(dc, g_fontSubtitle);
+    SetTextColor(dc, CLR_TEXT_PRIMARY);
+    RECT rtSec = {CONTENT_PAD + CFG_INNER, secY + CFG_INNER,
+                  CONTENT_PAD + CFG_LOG_W - CFG_INNER, secY + CFG_INNER + 20};
+    DrawTextW(dc, L"Segurança", -1, &rtSec, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, ofSec);
+
+    HPEN hpSec = CreatePen(PS_SOLID, 1, CLR_BORDER);
+    HPEN opSec = (HPEN)SelectObject(dc, hpSec);
+    MoveToEx(dc, CONTENT_PAD + 1, secY + CFG_HDR_H - 1, NULL);
+    LineTo(dc, CONTENT_PAD + CFG_LOG_W - 1, secY + CFG_HDR_H - 1);
+    SelectObject(dc, opSec);
+    DeleteObject(hpSec);
+
+    RestoreDC(dc, saved);
 }
 
 static void restart_spooler(void) {
@@ -535,6 +763,8 @@ BOOL settings_tab_command(UINT id) {
         s_pending.requireAgentRunning =
             (SendMessageW(s_hwndChkRequireAgent, BM_GETCHECK, 0, 0) == BST_CHECKED);
         GetWindowTextW(s_hwndGsPath, s_pending.gsPath, MAX_PATH);
+        s_pending.bloquearAplicacao =
+            (SendMessageW(s_hwndChkBloquear, BM_GETCHECK, 0, 0) == BST_CHECKED);
         if (settings_save(&s_pending)) {
             s_saved = s_pending;
             MessageBoxW(s_hwndParent,
@@ -556,6 +786,8 @@ BOOL settings_tab_command(UINT id) {
                      s_pending.agentAutoStart ? BST_CHECKED : BST_UNCHECKED, 0);
         SendMessageW(s_hwndChkRequireAgent, BM_SETCHECK,
                      s_pending.requireAgentRunning ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessageW(s_hwndChkBloquear, BM_SETCHECK,
+                     s_pending.bloquearAplicacao ? BST_CHECKED : BST_UNCHECKED, 0);
         SetWindowTextW(s_hwndGsPath, s_pending.gsPath);
         return TRUE;
     }
@@ -684,11 +916,22 @@ BOOL settings_tab_command(UINT id) {
         settings_tab_load(); // recarrega a UI porque o import pode ter mudado agentAutoStart, gsPath etc.
         return TRUE;
     }
+    if (id == IDC_CHK_BLOQUEAR_APP)
+        return TRUE;
+    if (id == IDC_BTN_DESBLOQUEAR) {
+        if (dlg_password_unlock(s_hwndParent)) {
+            s_desbloqueado = TRUE;
+            settings_tab_enable(TRUE);
+            if (s_on_unlock_cb) s_on_unlock_cb(TRUE);
+        }
+        return TRUE;
+    }
     return FALSE;
 }
 
 LRESULT settings_tab_ctlcolor(HWND hctl, HDC hdc) {
-    if (hctl == s_hwndChk || hctl == s_hwndChkRequireAgent || hctl == s_hwndGsPath) {
+    if (hctl == s_hwndChk || hctl == s_hwndChkRequireAgent ||
+        hctl == s_hwndGsPath || hctl == s_hwndChkBloquear) {
         SetBkColor(hdc, CLR_CARD);
         SetTextColor(hdc, CLR_TEXT_PRIMARY);
         return (LRESULT)g_hbrCard;
@@ -731,10 +974,11 @@ BOOL settings_tab_drawitem(DRAWITEMSTRUCT *dis) {
         dis->CtlID == IDC_BTN_GS_CHANGE    ||
         dis->CtlID == IDC_BTN_GS_TEST)
         return buttons_draw(dis, BTN_STYLE_SECONDARY);
-    if (dis->CtlID == IDC_BTN_LOG_OPEN    ||
-        dis->CtlID == IDC_BTN_LOG_CLEAR   ||
+    if (dis->CtlID == IDC_BTN_LOG_OPEN      ||
+        dis->CtlID == IDC_BTN_LOG_CLEAR     ||
         dis->CtlID == IDC_BTN_BACKUP_EXPORT ||
-        dis->CtlID == IDC_BTN_BACKUP_IMPORT)
+        dis->CtlID == IDC_BTN_BACKUP_IMPORT ||
+        dis->CtlID == IDC_BTN_DESBLOQUEAR)
         return buttons_draw(dis, BTN_STYLE_SECONDARY);
     return FALSE;
 }

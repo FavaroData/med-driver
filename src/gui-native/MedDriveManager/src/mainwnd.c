@@ -28,6 +28,11 @@ static void on_printers_changed(void) {
     profiles_tab_update_printers(p, n);
 }
 
+static void on_unlock(BOOL enabled) {
+    profiles_tab_enable(enabled);
+    printers_tab_enable(enabled);
+}
+
 /* ── Troca de aba ───────────────────────────────────────────────────────── */
 static void switch_tab(int tab) {
     g_activeTab = tab;
@@ -89,6 +94,7 @@ static void on_create(HWND hwnd) {
 
     /* Cabeamento cruzado */
     printers_tab_set_on_change(on_printers_changed);
+    settings_tab_set_on_unlock(on_unlock);
 
     /* Carga inicial */
     printers_tab_sync();
@@ -96,6 +102,13 @@ static void on_create(HWND hwnd) {
     profiles_tab_load();
 
     switch_tab(0);
+
+    /* desabilita todas as abas se a aplicacao comeca bloqueada */
+    if (settings_tab_is_locked()) {
+        profiles_tab_enable(FALSE);
+        printers_tab_enable(FALSE);
+        settings_tab_enable(FALSE);
+    }
 }
 
 /* ── WM_PAINT ───────────────────────────────────────────────────────────── */
@@ -258,6 +271,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     }
+
+    case WM_VSCROLL:
+        if (g_activeTab == 2) settings_tab_vscroll(wp);
+        return 0;
+
+    case WM_MOUSEWHEEL:
+        if (g_activeTab == 2)
+            settings_tab_mousewheel(GET_WHEEL_DELTA_WPARAM(wp));
+        return 0;
 
     case WM_MOUSELEAVE:
         s_navTrackingMouse = FALSE;

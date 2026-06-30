@@ -5,6 +5,7 @@ typedef struct {
     BOOL    agentAutoStart;
     BOOL    requireAgentRunning;
     wchar_t gsPath[MAX_PATH];
+    BOOL    bloquearAplicacao;
 } AppSettings;
 
 void settings_load(AppSettings *out);

@@ -1,0 +1,62 @@
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <bcrypt.h>
+#include <stdio.h>
+#include "dlg_password.h"
+#include "resource.h"
+
+static void sha256_hex(const wchar_t *pwd, wchar_t out[65]) {
+    int u8len = WideCharToMultiByte(CP_UTF8, 0, pwd, -1, NULL, 0, NULL, NULL);
+    char *u8 = (char *)HeapAlloc(GetProcessHeap(), 0, (size_t)u8len);
+    WideCharToMultiByte(CP_UTF8, 0, pwd, -1, u8, u8len, NULL, NULL);
+
+    BCRYPT_ALG_HANDLE alg;
+    BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0);
+    BCRYPT_HASH_HANDLE hHash;
+    BCryptCreateHash(alg, &hHash, NULL, 0, NULL, 0, 0);
+    BCryptHashData(hHash, (PBYTE)u8, (ULONG)(u8len - 1), 0);
+    BYTE hash[32];
+    BCryptFinishHash(hHash, hash, 32, 0);
+    BCryptDestroyHash(hHash);
+    BCryptCloseAlgorithmProvider(alg, 0);
+    HeapFree(GetProcessHeap(), 0, u8);
+
+    for (int i = 0; i < 32; i++)
+        _snwprintf_s(out + i * 2, 3, _TRUNCATE, L"%02x", hash[i]);
+    out[64] = 0;
+}
+
+static INT_PTR CALLBACK dlg_unlock_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    (void)lp;
+    switch (msg) {
+    case WM_INITDIALOG:
+        return TRUE;
+    case WM_COMMAND:
+        if (LOWORD(wp) == IDCANCEL) { EndDialog(hwnd, 0); return TRUE; }
+        if (LOWORD(wp) == IDOK) {
+            static const wchar_t HASH[] =
+                L"4a18ff0209286b695cfe5099c77843d8e96711decdf93da7e8892ba38d0c6fbd";
+            wchar_t pwd[128] = {0};
+            GetDlgItemTextW(hwnd, IDC_EDIT_SENHA, pwd, 128);
+            wchar_t hash[65];
+            sha256_hex(pwd, hash);
+            if (wcscmp(hash, HASH) != 0) {
+                MessageBoxW(hwnd, L"Senha incorreta.", L"Desbloquear",
+                            MB_ICONERROR | MB_OK);
+                SetDlgItemTextW(hwnd, IDC_EDIT_SENHA, L"");
+                SetFocus(GetDlgItem(hwnd, IDC_EDIT_SENHA));
+                return TRUE;
+            }
+            EndDialog(hwnd, 1);
+            return TRUE;
+        }
+        break;
+    }
+    return FALSE;
+}
+
+BOOL dlg_password_unlock(HWND parent) {
+    HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);
+    return (BOOL)DialogBoxParamW(hInst, MAKEINTRESOURCEW(IDD_PASSWORD_UNLOCK),
+                                 parent, dlg_unlock_proc, 0);
+}

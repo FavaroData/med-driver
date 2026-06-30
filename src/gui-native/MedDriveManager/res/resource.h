@@ -81,3 +81,13 @@
    Os dois botoes gravam e restauram perfis, impressoras e configuracoes em JSON. */
 #define IDC_BTN_BACKUP_EXPORT   150
 #define IDC_BTN_BACKUP_IMPORT   151
+
+/* IDs dos controles do card Segurança. O scrollbar lateral da aba Configuracoes
+   tambem fica aqui porque so existe quando esse card existe. */
+#define IDC_CHK_BLOQUEAR_APP    160
+#define IDC_BTN_DESBLOQUEAR     162
+#define IDC_SETTINGS_SCROLL     163
+
+/* Dialogos de senha */
+#define IDD_PASSWORD_UNLOCK     701
+#define IDC_EDIT_SENHA          710

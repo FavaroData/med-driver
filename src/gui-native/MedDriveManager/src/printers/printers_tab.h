@@ -11,3 +11,4 @@ BOOL                printers_tab_drawitem(DRAWITEMSTRUCT *dis);
 BOOL                printers_tab_measure(MEASUREITEMSTRUCT *mis);
 void                printers_tab_set_on_change(void (*cb)(void));
 const PrinterEntry* printers_tab_get(int *out_count);
+void                printers_tab_enable(BOOL enabled);
