@@ -120,11 +120,29 @@ static void ensure_dir(const wchar_t *path)
 }
 
 /* Busca recursiva por filename em dir; retorna caminho completo em out */
-static BOOL find_recursive(const wchar_t *dir, const wchar_t *filename,
-                            wchar_t *out, int outLen)
+// verifica se a pasta tem os 3 arquivos do driver PScript5
+static BOOL dir_has_pscript5(const wchar_t *dir)
 {
+    wchar_t p[MAX_PATH];
+    _snwprintf(p, MAX_PATH, L"%s\\PSCRIPT5.DLL", dir);
+    if (GetFileAttributesW(p) == INVALID_FILE_ATTRIBUTES) return FALSE;
+    _snwprintf(p, MAX_PATH, L"%s\\PSCRIPT.NTF", dir);
+    if (GetFileAttributesW(p) == INVALID_FILE_ATTRIBUTES) return FALSE;
+    _snwprintf(p, MAX_PATH, L"%s\\PS5UI.DLL", dir);
+    if (GetFileAttributesW(p) == INVALID_FILE_ATTRIBUTES) return FALSE;
+    return TRUE;
+}
+
+// procura recursivamente a primeira pasta que contenha os 3 arquivos juntos.
+// Buscar so PSCRIPT5.DLL nao basta: no DriverStore ha varias ntprint.inf_amd64_*
+// e o companheiro PSCRIPT.NTF/PS5UI.DLL pode estar em outra pasta, o que fazia o
+// AddPrinterDriverExW falhar com Win32 3 (PATH_NOT_FOUND).
+static BOOL find_driver_dir(const wchar_t *root, wchar_t *out, int outLen)
+{
+    if (dir_has_pscript5(root)) { _snwprintf(out, outLen, L"%s", root); return TRUE; }
+
     wchar_t pattern[MAX_PATH];
-    _snwprintf(pattern, MAX_PATH, L"%s\\*", dir);
+    _snwprintf(pattern, MAX_PATH, L"%s\\*", root);
 
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW(pattern, &fd);
@@ -134,16 +152,10 @@ static BOOL find_recursive(const wchar_t *dir, const wchar_t *filename,
     do {
         if (!wcscmp(fd.cFileName, L".") || !wcscmp(fd.cFileName, L".."))
             continue;
-
-        wchar_t full[MAX_PATH];
-        _snwprintf(full, MAX_PATH, L"%s\\%s", dir, fd.cFileName);
-
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-            if (find_recursive(full, filename, out, outLen)) { found = TRUE; break; }
-        } else if (!_wcsicmp(fd.cFileName, filename)) {
-            _snwprintf(out, outLen, L"%s", full);
-            found = TRUE;
-            break;
+            wchar_t full[MAX_PATH];
+            _snwprintf(full, MAX_PATH, L"%s\\%s", root, fd.cFileName);
+            if (find_driver_dir(full, out, outLen)) { found = TRUE; break; }
         }
     } while (FindNextFileW(h, &fd));
 
@@ -273,17 +285,13 @@ int main(void)
     Sleep(5000);
     log_msg("  OK - Spooler em execucao");
 
-    /* ── 5. Localiza PSCRIPT5.DLL no DriverStore ─────────────────── */
-    log_msg("[5] Localizando PSCRIPT5.DLL no DriverStore...");
-    wchar_t pscript5[MAX_PATH] = {0};
-    if (!find_recursive(driverStoreRoot, L"PSCRIPT5.DLL", pscript5, MAX_PATH)) {
-        log_msgw(L"  ERRO: PSCRIPT5.DLL nao encontrado em %s", driverStoreRoot);
+    /* ── 5. Localiza a pasta do PSCRIPT5 no DriverStore (com os 3 arquivos) ── */
+    log_msg("[5] Localizando pasta do PSCRIPT5 no DriverStore...");
+    wchar_t driverDir[MAX_PATH];
+    if (!find_driver_dir(driverStoreRoot, driverDir, MAX_PATH)) {
+        log_msgw(L"  ERRO: pasta com PSCRIPT5.DLL + PSCRIPT.NTF + PS5UI.DLL nao encontrada em %s", driverStoreRoot);
         if (g_log) fclose(g_log); return 1;
     }
-    wchar_t driverDir[MAX_PATH];
-    _snwprintf(driverDir, MAX_PATH, L"%s", pscript5);
-    wchar_t *lastSlash = wcsrchr(driverDir, L'\\');
-    if (lastSlash) *lastSlash = L'\0';
     log_msgw(L"  DriverStore: %s", driverDir);
 
     /* ── 6. Instala driver PSCRIPT5 ──────────────────────────────── */
