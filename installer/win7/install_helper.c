@@ -83,14 +83,35 @@ static BOOL svc_stop(const wchar_t *name)
 static BOOL svc_start(const wchar_t *name)
 {
     SC_HANDLE hSCM = OpenSCManagerW(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-    if (!hSCM) return FALSE;
+    if (!hSCM) { log_msg("  svc_start: OpenSCManager falhou (Win32 %lu)", GetLastError()); return FALSE; }
     SC_HANDLE hSvc = OpenServiceW(hSCM, name, SERVICE_ALL_ACCESS);
-    BOOL ok = FALSE;
-    if (hSvc) {
-        StartServiceW(hSvc, 0, NULL);
-        ok = svc_wait(hSvc, SERVICE_RUNNING, 30000);
-        CloseServiceHandle(hSvc);
+    if (!hSvc) {
+        log_msg("  svc_start: OpenService falhou (Win32 %lu)", GetLastError());
+        CloseServiceHandle(hSCM);
+        return FALSE;
     }
+
+    SERVICE_STATUS ss;
+    // se ainda esta parando, espera terminar de parar antes de iniciar
+    if (QueryServiceStatus(hSvc, &ss) && ss.dwCurrentState == SERVICE_STOP_PENDING)
+        svc_wait(hSvc, SERVICE_STOPPED, 30000);
+
+    BOOL ok = FALSE;
+    if (QueryServiceStatus(hSvc, &ss) && ss.dwCurrentState == SERVICE_RUNNING) {
+        ok = TRUE;  // ja esta rodando (ex.: dependencias impediram o stop)
+    } else if (StartServiceW(hSvc, 0, NULL)) {
+        ok = svc_wait(hSvc, SERVICE_RUNNING, 60000);
+        if (!ok) {
+            QueryServiceStatus(hSvc, &ss);
+            log_msg("  svc_start: timeout esperando RUNNING (estado=%lu)", ss.dwCurrentState);
+        }
+    } else {
+        DWORD e = GetLastError();
+        if (e == ERROR_SERVICE_ALREADY_RUNNING) ok = TRUE;
+        else log_msg("  svc_start: StartService falhou (Win32 %lu)", e);
+    }
+
+    CloseServiceHandle(hSvc);
     CloseServiceHandle(hSCM);
     return ok;
 }
