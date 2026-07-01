@@ -416,10 +416,13 @@ Get-Content C:\Windows\Temp\meddrive_printer_manager.log
 | Windows 7 x64 | ✓ Suportado | `MeddrivePrinter-Win7-Setup.exe` |
 | Windows Vista x64 **SP2** | ✓ Suportado (requer PS 2.0) | `MeddrivePrinter-Vista-Setup.exe` |
 | Windows Vista x64 RTM/SP1 | ✗ UCRT não disponível | — |
-| Windows x86 (32-bit) | ✗ DLL 64-bit incompatível | — |
+| Windows XP x86 **SP2/SP3** | ✓ Suportado (build i686 dedicada) | `MeddrivePrinter-WinXP-Setup.exe` |
+| Windows Vista/7 x86 (32-bit) | ✗ Sem build 32-bit | — |
 
 **Ghostscript:**
 - Win10/11: 10.x (bundlado no instalador)
 - Win7 / Vista SP2: 9.56.1 + DLLs UCRT bundladas (versões 10.x não são compatíveis com Win7/Vista)
+- Windows XP x86: Ghostscript 32-bit (gswin32c) bundlado
 
 Ver `docs/winvista-particularidades.md` para detalhes do suporte ao Vista.
+Ver `docs/winxp-particularidades.md` para detalhes do suporte ao XP.

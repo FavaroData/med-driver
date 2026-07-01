@@ -17,6 +17,7 @@ Não exige interação do usuário após a instalação — basta instalar, cria
 | `MeddrivePrinter-Setup.exe` | Instalador para Windows 10/11 |
 | `MeddrivePrinter-Win7-Setup.exe` | Instalador para Windows 7 x64 |
 | `MeddrivePrinter-Vista-Setup.exe` | Instalador para Windows Vista x64 SP2 |
+| `MeddrivePrinter-WinXP-Setup.exe` | Instalador para Windows XP x86 SP2/SP3 |
 
 ### Código-fonte
 
@@ -80,6 +81,12 @@ Todas as configurações (caminho de saída, nome de arquivo, estratégia de con
 - Ghostscript 9.56.1 (bundled, mesmo bundle do Win7)
 - Execução como Administrador
 
+**Windows XP x86 SP2/SP3:**
+- Ghostscript 32-bit (bundled no instalador)
+- Driver PSCRIPT5 (bundled no instalador; não vem em XP limpo)
+- PowerShell 2.0 apenas para o MedDriveManager (KB968930); não é exigido para instalar
+- Execução como Administrador
+
 ---
 
 ## Instalação
@@ -96,6 +103,11 @@ O instalador Win7 usa `install_helper.exe` (binário nativo C) em vez de PowerSh
 Antes de instalar, certifique-se de que o **PowerShell 2.0** está instalado (KB968930 via Windows Update). O instalador verifica isso automaticamente e aborta com instruções se não estiver presente.
 
 Execute `MeddrivePrinter-Vista-Setup.exe` como administrador.
+
+### Windows XP x86 SP2/SP3
+Execute `MeddrivePrinter-WinXP-Setup.exe` como administrador.
+
+O instalador XP usa `install_helper_xp.exe` (binário nativo C, i686) para registrar o monitor e o driver por API do Windows, sem depender de PowerShell. O driver PSCRIPT5 e o Ghostscript 32-bit vão empacotados no próprio instalador. Detalhes em `docs/winxp-particularidades.md`.
 
 > Se aparecer o erro "execução de scripts foi desabilitada", execute:
 > ```powershell
