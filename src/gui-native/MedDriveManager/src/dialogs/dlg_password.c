@@ -1,10 +1,50 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#ifdef MEDDRIVE_XP
+#include <wincrypt.h>   /* XP: bcrypt.dll e Vista+; usa CryptoAPI (advapi32) */
+#else
 #include <bcrypt.h>
+#endif
 #include <stdio.h>
 #include "dlg_password.h"
 #include "resource.h"
 
+#ifdef MEDDRIVE_XP
+/* XP: SHA-256 via CryptoAPI legada (advapi32). PROV_RSA_AES tem SHA-256 no XP SP3;
+   no SP2 cai no provedor "Prototype". Mesmo digest que o bcrypt -> hash compativel. */
+#ifndef CALG_SHA_256
+#define CALG_SHA_256 0x0000800c
+#endif
+#ifndef PROV_RSA_AES
+#define PROV_RSA_AES 24
+#endif
+static void sha256_hex(const wchar_t *pwd, wchar_t out[65]) {
+    int u8len = WideCharToMultiByte(CP_UTF8, 0, pwd, -1, NULL, 0, NULL, NULL);
+    char *u8 = (char *)HeapAlloc(GetProcessHeap(), 0, (size_t)u8len);
+    WideCharToMultiByte(CP_UTF8, 0, pwd, -1, u8, u8len, NULL, NULL);
+
+    BYTE hash[32] = {0};
+    HCRYPTPROV hProv = 0;
+    HCRYPTHASH hHash = 0;
+    if (CryptAcquireContextW(&hProv, NULL, NULL, PROV_RSA_AES, CRYPT_VERIFYCONTEXT) ||
+        CryptAcquireContextW(&hProv, NULL,
+            L"Microsoft Enhanced RSA and AES Cryptographic Provider (Prototype)",
+            PROV_RSA_AES, CRYPT_VERIFYCONTEXT)) {
+        if (CryptCreateHash(hProv, CALG_SHA_256, 0, 0, &hHash)) {
+            CryptHashData(hHash, (BYTE *)u8, (DWORD)(u8len - 1), 0);
+            DWORD hlen = 32;
+            CryptGetHashParam(hHash, HP_HASHVAL, hash, &hlen, 0);
+            CryptDestroyHash(hHash);
+        }
+        CryptReleaseContext(hProv, 0);
+    }
+    HeapFree(GetProcessHeap(), 0, u8);
+
+    for (int i = 0; i < 32; i++)
+        _snwprintf_s(out + i * 2, 3, _TRUNCATE, L"%02x", hash[i]);
+    out[64] = 0;
+}
+#else
 static void sha256_hex(const wchar_t *pwd, wchar_t out[65]) {
     int u8len = WideCharToMultiByte(CP_UTF8, 0, pwd, -1, NULL, 0, NULL, NULL);
     char *u8 = (char *)HeapAlloc(GetProcessHeap(), 0, (size_t)u8len);
@@ -25,6 +65,7 @@ static void sha256_hex(const wchar_t *pwd, wchar_t out[65]) {
         _snwprintf_s(out + i * 2, 3, _TRUNCATE, L"%02x", hash[i]);
     out[64] = 0;
 }
+#endif
 
 static INT_PTR CALLBACK dlg_unlock_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     (void)lp;

@@ -3,18 +3,45 @@
 #include <stdio.h>
 #include "settings.h"
 
-#define TASK_NAME  L"MeddrivePrinterAgent"
-#define TASK_XML   L"%SystemRoot%\\System32\\Tasks\\MeddrivePrinterAgent"
-#define INI_DIR      L"%ProgramData%\\Meddrive Printer"
-#define INI_FILE     L"%ProgramData%\\Meddrive Printer\\settings.ini"
+#define INI_DIR      MEDDRIVE_DATA_DIR
+#define INI_FILE     MEDDRIVE_DATA_DIR L"\\settings.ini"
 #define INI_SECT     L"Geral"
 #define INI_SECT_GS  L"Ghostscript"
-#define GS_DEFAULT   L"%ProgramData%\\Meddrive Printer\\Ghostscript\\bin\\gswin64c.exe"
+#define GS_DEFAULT   MEDDRIVE_DATA_DIR L"\\Ghostscript\\bin\\" MEDDRIVE_GS_EXE
 #define PORTS_KEY    L"SYSTEM\\CurrentControlSet\\Control\\Print\\Monitors\\Meddrive Printer MONITOR\\Ports"
 
 static void get_ini_path(wchar_t *out, int len) {
     ExpandEnvironmentStringsW(INI_FILE, out, len);
 }
+
+#ifdef MEDDRIVE_XP
+#define RUN_KEY_PATH L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run"
+#define RUN_KEY_VAL  L"MeddrivePrinterAgent"
+
+/* No XP o agente sobe pela Run key (o install_helper_xp.c a cria).
+   Ligar = gravar o valor; desligar = remover. */
+static BOOL xp_set_autostart(BOOL enable) {
+    HKEY hk;
+    if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, RUN_KEY_PATH, 0, NULL, 0,
+                        KEY_SET_VALUE, NULL, &hk, NULL) != ERROR_SUCCESS)
+        return FALSE;
+    LONG r;
+    if (enable) {
+        wchar_t agent[MAX_PATH];
+        ExpandEnvironmentStringsW(
+            MEDDRIVE_DATA_DIR L"\\MeddrivePrinterAgent.exe", agent, MAX_PATH);
+        r = RegSetValueExW(hk, RUN_KEY_VAL, 0, REG_SZ, (BYTE *)agent,
+                           (DWORD)((wcslen(agent) + 1) * sizeof(wchar_t)));
+    } else {
+        r = RegDeleteValueW(hk, RUN_KEY_VAL);
+        if (r == ERROR_FILE_NOT_FOUND) r = ERROR_SUCCESS;  /* ja desligado */
+    }
+    RegCloseKey(hk);
+    return (r == ERROR_SUCCESS);
+}
+#else
+#define TASK_NAME  L"MeddrivePrinterAgent"
+#define TASK_XML   L"%SystemRoot%\\System32\\Tasks\\MeddrivePrinterAgent"
 
 static BOOL run_schtasks(const wchar_t *flag) {
     wchar_t cmd[256];
@@ -37,6 +64,7 @@ static BOOL run_schtasks(const wchar_t *flag) {
     CloseHandle(pi.hThread);
     return (code == 0);
 }
+#endif
 
 void settings_load(AppSettings *out) {
     out->agentAutoStart      = FALSE;
@@ -53,6 +81,15 @@ void settings_load(AppSettings *out) {
     GetPrivateProfileStringW(INI_SECT_GS, L"ExecutablePath",
                              out->gsPath, out->gsPath, MAX_PATH, ini);
 
+#ifdef MEDDRIVE_XP
+    /* XP: presenca do valor na Run key = auto-start ligado */
+    HKEY hk;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, RUN_KEY_PATH, 0, KEY_QUERY_VALUE, &hk) == ERROR_SUCCESS) {
+        if (RegQueryValueExW(hk, RUN_KEY_VAL, NULL, NULL, NULL, NULL) == ERROR_SUCCESS)
+            out->agentAutoStart = TRUE;
+        RegCloseKey(hk);
+    }
+#else
     wchar_t path[MAX_PATH];
     ExpandEnvironmentStringsW(TASK_XML, path, MAX_PATH);
 
@@ -95,10 +132,15 @@ void settings_load(AppSettings *out) {
 
     HeapFree(GetProcessHeap(), 0, buf);
     out->agentAutoStart = !disabled;
+#endif
 }
 
 BOOL settings_save(const AppSettings *s) {
+#ifdef MEDDRIVE_XP
+    BOOL ok = xp_set_autostart(s->agentAutoStart);
+#else
     BOOL ok = run_schtasks(s->agentAutoStart ? L"/ENABLE" : L"/DISABLE");
+#endif
 
     wchar_t dir[MAX_PATH], ini[MAX_PATH];
     ExpandEnvironmentStringsW(INI_DIR, dir, MAX_PATH);

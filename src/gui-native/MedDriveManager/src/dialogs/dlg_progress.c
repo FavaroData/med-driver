@@ -5,6 +5,7 @@
 #include "resource.h"
 #include "ui/theme.h"
 #include "ui/buttons.h"
+#include "settings/settings.h"   /* MEDDRIVE_DATA_DIR, MEDDRIVE_GS_EXE */
 
 #define WM_APP_PS_OUTPUT  (WM_APP + 1)
 #define WM_APP_PS_DONE    (WM_APP + 2)
@@ -32,10 +33,10 @@ typedef struct {
 static void load_gs_path(wchar_t *out, int len) {
     wchar_t ini[MAX_PATH];
     ExpandEnvironmentStringsW(
-        L"%ProgramData%\\Meddrive Printer\\settings.ini", ini, MAX_PATH);
+        MEDDRIVE_DATA_DIR L"\\settings.ini", ini, MAX_PATH);
     wchar_t def[MAX_PATH];
     ExpandEnvironmentStringsW(
-        L"%ProgramData%\\Meddrive Printer\\Ghostscript\\bin\\gswin64c.exe", def, MAX_PATH);
+        MEDDRIVE_DATA_DIR L"\\Ghostscript\\bin\\" MEDDRIVE_GS_EXE, def, MAX_PATH);
     GetPrivateProfileStringW(L"Ghostscript", L"ExecutablePath", def, out, len, ini);
 }
 

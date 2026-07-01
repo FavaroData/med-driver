@@ -41,7 +41,7 @@
    na criacao do controle passamos 120px para o dropdown ter espaco para as quatro opcoes.
    CFG_LOG_BTN_W e 155px porque "Abrir pasta de logs" nao cabe nos 130px do BTN_W padrao. */
 #define LOG_FILE        L"C:\\Windows\\Temp\\meddrive_printer_manager.log"
-#define CFG_LOG_INI     L"%ProgramData%\\Meddrive Printer\\settings.ini"
+#define CFG_LOG_INI     MEDDRIVE_DATA_DIR L"\\settings.ini"
 #define CFG_LOG_Y       (CFG_CARD_Y + CFG_CARD_H + 16)
 #define CFG_LOG_W       (WIN_W - CONTENT_PAD * 2)
 #define CFG_LOG_CMB_W   140

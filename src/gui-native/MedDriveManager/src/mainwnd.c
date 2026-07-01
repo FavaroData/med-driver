@@ -1,6 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <dwmapi.h>
 #include <commctrl.h>
 #include <stdio.h>
 #include "mainwnd.h"
@@ -331,12 +330,18 @@ HWND mainwnd_create(HINSTANCE hInst) {
 
     if (!hwnd) return NULL;
 
-    DWORD policy = DWMNCRP_ENABLED;
-    DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY,
-                          &policy, sizeof(policy));
-
-    MARGINS m = {1, 1, 1, 1};
-    DwmExtendFrameIntoClientArea(hwnd, &m);
+    /* ponytail: runtime loading — dwmapi.dll nao existe no XP; no-op gracioso se ausente */
+    HMODULE hDwm = LoadLibraryW(L"dwmapi.dll");
+    if (hDwm) {
+        typedef HRESULT (WINAPI *PFN_SetWA)(HWND, DWORD, LPCVOID, DWORD);
+        typedef HRESULT (WINAPI *PFN_ExtFr)(HWND, LPCVOID);
+        PFN_SetWA pfnSet = (PFN_SetWA)GetProcAddress(hDwm, "DwmSetWindowAttribute");
+        PFN_ExtFr pfnExt = (PFN_ExtFr)GetProcAddress(hDwm, "DwmExtendFrameIntoClientArea");
+        DWORD policy = 2; /* DWMNCRP_ENABLED */
+        if (pfnSet) pfnSet(hwnd, 2 /* DWMWA_NCRENDERING_POLICY */, &policy, sizeof(policy));
+        int m[4] = {1, 1, 1, 1}; /* MARGINS: left, right, top, bottom */
+        if (pfnExt) pfnExt(hwnd, m);
+    }
 
     return hwnd;
 }

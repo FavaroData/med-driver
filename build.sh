@@ -54,7 +54,7 @@ $MINGW-gcc -mwindows \
     "$TMP/settings.o" "$TMP/settings_tab.o" "$TMP/import_config.o" "$TMP/dlg_password.o" \
     "$TMP/profiles_tab.o" "$TMP/printers_tab.o" \
     "$TMP/app_res.o" \
-    -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool -ldwmapi -lbcrypt \
+    -lcomctl32 -lcomdlg32 -lshell32 -lole32 -lwinspool -lbcrypt \
     -o "$OUT/MedDriveManager.exe"
 
 echo "  -> $OUT/MedDriveManager.exe"

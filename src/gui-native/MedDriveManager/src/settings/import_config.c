@@ -3,6 +3,7 @@
 #include <winspool.h>
 #include <commdlg.h>
 #include <stdio.h>
+#include <stdlib.h>   /* _wtoi */
 #include "import_config.h"
 #include "settings.h"
 #include "../store.h"
@@ -16,7 +17,7 @@ static const WCHAR PORTS_KEY[]   =
 static const WCHAR PORT_PREFIX[] = L"Meddrive Printer PORT ";
 static const WCHAR MONITOR[]     = L"Meddrive Printer MONITOR";
 static const WCHAR DRIVER[]      = L"Meddrive Printer DRIVER";
-static const WCHAR INI_PATH[]    = L"%ProgramData%\\Meddrive Printer\\settings.ini";
+static const WCHAR INI_PATH[]    = MEDDRIVE_DATA_DIR L"\\settings.ini";
 
 // scanner simples com wcsstr funciona porque nos geramos o JSON (schema fixo).
 // Se o schema crescer ou aceitar JSON externo, use uma lib de parsing.
