@@ -35,6 +35,7 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
     // parametros dentro do registry
     HKEY  hKey;
     DWORD size;
+    LONG  qr;   // resultado de cada RegQueryValueExW, logado por componente
 
     // constrói o caminho da chave a partir do nome da porta recebida do spooler
     WCHAR keyPath[512];
@@ -49,33 +50,39 @@ static BOOL ReadConfig(PORT_CONTEXT *ctx, LPCWSTR portName) {
 
     // lê a pasta de destino
     size = sizeof(ctx->outputPath);
-    RegQueryValueExW(hKey, L"OutputPath", NULL, NULL, (LPBYTE)ctx->outputPath, &size);
-    LogDebug("ReadConfig: OutputPath lido (len=%lu)\n", size);
+    qr = RegQueryValueExW(hKey, L"OutputPath", NULL, NULL, (LPBYTE)ctx->outputPath, &size);
+    LogDebug("ReadConfig: OutputPath resultado=%ld (%s) len=%lu\n",
+        qr, qr == ERROR_SUCCESS ? "SUCCESS" : "FALHOU", size);
 
     // lê o nome base do arquivo; usa "saida" como fallback para impressoras antigas
     size = sizeof(ctx->outputBaseName);
-    RegQueryValueExW(hKey, L"OutputBaseName", NULL, NULL, (LPBYTE)ctx->outputBaseName, &size);
-    if (ctx->outputBaseName[0] == L'\0') {
+    qr = RegQueryValueExW(hKey, L"OutputBaseName", NULL, NULL, (LPBYTE)ctx->outputBaseName, &size);
+    if (qr != ERROR_SUCCESS || ctx->outputBaseName[0] == L'\0') {
         wcscpy_s(ctx->outputBaseName, 256, L"saida");
-        LogDebug("ReadConfig: OutputBaseName ausente, usando fallback 'saida'\n");
+        LogDebug("ReadConfig: OutputBaseName resultado=%ld (FALHOU) usando fallback 'saida'\n", qr);
     } else {
-        LogDebug("ReadConfig: OutputBaseName lido: %ls\n", ctx->outputBaseName);
+        LogDebug("ReadConfig: OutputBaseName resultado=%ld (SUCCESS) lido: %ls\n", qr, ctx->outputBaseName);
     }
 
     // lê o ghostscriptpath
     size = sizeof(ctx->ghostscriptPath);
-    RegQueryValueExW(hKey, L"GhostscriptPath", NULL, NULL, (LPBYTE)ctx->ghostscriptPath, &size);
-    LogDebug("ReadConfig: GhostscriptPath lido (len=%lu)\n", size);
+    qr = RegQueryValueExW(hKey, L"GhostscriptPath", NULL, NULL, (LPBYTE)ctx->ghostscriptPath, &size);
+    LogDebug("ReadConfig: GhostscriptPath resultado=%ld (%s) len=%lu\n",
+        qr, qr == ERROR_SUCCESS ? "SUCCESS" : "FALHOU", size);
 
-    // lê flags opcionais (falha silenciosa — valor padrão 0 já está no ctx zerado)
+    // lê flags opcionais — cada leitura logada individualmente
     size = sizeof(DWORD);
-    RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &size);
+    qr = RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &size);
+    LogDebug("ReadConfig: OpenAfterGenerate resultado=%ld (%s) valor=%lu\n",
+        qr, qr == ERROR_SUCCESS ? "SUCCESS" : "FALHOU", ctx->openAfterGenerate);
     size = sizeof(DWORD);
-    RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &size);
+    qr = RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &size);
+    LogDebug("ReadConfig: OverwriteFile resultado=%ld (%s) valor=%lu\n",
+        qr, qr == ERROR_SUCCESS ? "SUCCESS" : "FALHOU", ctx->overwriteFile);
     size = sizeof(DWORD);
-    RegQueryValueExW(hKey, L"ChoosePath",        NULL, NULL, (LPBYTE)&ctx->choosePath,        &size);
-    LogDebug("ReadConfig: OpenAfterGenerate=%lu OverwriteFile=%lu ChoosePath=%lu\n",
-        ctx->openAfterGenerate, ctx->overwriteFile, ctx->choosePath);
+    qr = RegQueryValueExW(hKey, L"ChoosePath",        NULL, NULL, (LPBYTE)&ctx->choosePath,        &size);
+    LogDebug("ReadConfig: ChoosePath resultado=%ld (%s) valor=%lu\n",
+        qr, qr == ERROR_SUCCESS ? "SUCCESS" : "FALHOU", ctx->choosePath);
 
     // fecha a chave do registry, retorna TRUE se ambos os caminhos foram lidos com sucesso, FALSE caso contrário
     RegCloseKey(hKey);
@@ -358,21 +365,10 @@ static BOOL WINAPI Monitor_StartDocPort(
     PORT_CONTEXT *ctx = (PORT_CONTEXT *)hPort;
     WCHAR         tempDir[MAX_PATH];
 
-    // re-lê configurações voláteis do registry a cada job (o OpenPort é chamado uma vez e o ctx fica cacheado)
-    {
-        WCHAR keyPath[512];
-        swprintf(keyPath, 512, L"Ports\\%ls", ctx->portName);
-        HKEY hKey;
-        if (RegOpenKeyExW(g_hkRoot, keyPath, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
-            DWORD sz = sizeof(DWORD);
-            RegQueryValueExW(hKey, L"OpenAfterGenerate", NULL, NULL, (LPBYTE)&ctx->openAfterGenerate, &sz);
-            sz = sizeof(DWORD);
-            RegQueryValueExW(hKey, L"OverwriteFile",     NULL, NULL, (LPBYTE)&ctx->overwriteFile,     &sz);
-            sz = sizeof(DWORD);
-            RegQueryValueExW(hKey, L"ChoosePath",        NULL, NULL, (LPBYTE)&ctx->choosePath,        &sz);
-            RegCloseKey(hKey);
-        }
-    }
+    // re-lê TODAS as configurações do registry a cada job. O OpenPort é chamado uma vez
+    // e o ctx fica cacheado; sem reler aqui, editar OutputPath/OutputBaseName/GhostscriptPath
+    // não tinha efeito até a porta reabrir (antes só os 3 DWORDs voláteis eram relidos).
+    ReadConfig(ctx, ctx->portName);
 
     // cria o arquivo temporário para armazenar o conteúdo enviado pelo spooler
     GetTempPathW(MAX_PATH, tempDir);
