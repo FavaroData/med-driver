@@ -33,8 +33,10 @@ Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 public class Win32RemovePrinter {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PRINTER_DEFAULTS { public string pDatatype; public IntPtr pDevMode; public uint DesiredAccess; }
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, ref PRINTER_DEFAULTS pDefault);
     [DllImport("winspool.drv", SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr hPrinter);
     [DllImport("winspool.drv", SetLastError=true)]
@@ -49,8 +51,12 @@ if ($spoolerStatus -ne 'Running') {
 }
 
 Log "[INFO] Removendo impressora '$PrinterName'..."
+# DeletePrinter exige handle com PRINTER_ALL_ACCESS (0x000F000C); sem PRINTER_DEFAULTS
+# o OpenPrinter da so PRINTER_ACCESS_USE -> DeletePrinter erro 5
+$pd = New-Object Win32RemovePrinter+PRINTER_DEFAULTS
+$pd.DesiredAccess = 0x000F000C
 $hPrinter = [IntPtr]::Zero
-if ([Win32RemovePrinter]::OpenPrinter($PrinterName, [ref]$hPrinter, [IntPtr]::Zero)) {
+if ([Win32RemovePrinter]::OpenPrinter($PrinterName, [ref]$hPrinter, [ref]$pd)) {
     $ok = [Win32RemovePrinter]::DeletePrinter($hPrinter)
     [Win32RemovePrinter]::ClosePrinter($hPrinter) | Out-Null
     if ($ok) {

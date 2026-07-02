@@ -89,8 +89,10 @@ public class PortMgrWin7 {
     public static extern bool AddPortEx(string pName, uint Level, ref PORT_INFO_1 lpBuffer, string lpMonitorName);
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
     public static extern bool DeletePort(string pName, IntPtr hWnd, string pPortName);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PRINTER_DEFAULTS { public string pDatatype; public IntPtr pDevMode; public uint DesiredAccess; }
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, ref PRINTER_DEFAULTS pDefault);
     [DllImport("winspool.drv", SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr hPrinter);
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
@@ -133,8 +135,11 @@ if ($Renaming) {
     $linked = Get-WmiObject Win32_Printer -Filter $filter -ErrorAction SilentlyContinue
     foreach ($wmiP in $linked) {
         Log "[INFO] Migrando impressora '$($wmiP.Name)'..."
+        # SetPrinter exige handle com PRINTER_ALL_ACCESS (0x000F000C)
+        $pd = New-Object PortMgrWin7+PRINTER_DEFAULTS
+        $pd.DesiredAccess = 0x000F000C
         $hP = [IntPtr]::Zero
-        if ([PortMgrWin7]::OpenPrinter($wmiP.Name, [ref]$hP, [IntPtr]::Zero)) {
+        if ([PortMgrWin7]::OpenPrinter($wmiP.Name, [ref]$hP, [ref]$pd)) {
             $pi2                 = New-Object PortMgrWin7+PRINTER_INFO_2
             $pi2.pPrinterName    = $wmiP.Name
             $pi2.pPortName       = $NewPortName

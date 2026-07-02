@@ -68,8 +68,10 @@ public class Win32AddPrinter {
     public struct DRIVER_INFO_1 { public IntPtr pName; }
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
     public static extern bool EnumPrinterDrivers(string pName, string pEnv, uint Level, IntPtr pBuf, uint cbBuf, ref uint pcbNeeded, ref uint pcReturned);
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PRINTER_DEFAULTS { public string pDatatype; public IntPtr pDevMode; public uint DesiredAccess; }
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, ref PRINTER_DEFAULTS pDefault);
     [DllImport("winspool.drv", SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr hPrinter);
     [DllImport("winspool.drv", SetLastError=true)]
@@ -138,8 +140,12 @@ if ($spoolerStatus -ne 'Running') {
     exit 1
 }
 
+# DeletePrinter exige handle com PRINTER_ALL_ACCESS (0x000F000C); sem PRINTER_DEFAULTS
+# o OpenPrinter da so PRINTER_ACCESS_USE -> DeletePrinter erro 5
+$pdDel = New-Object Win32AddPrinter+PRINTER_DEFAULTS
+$pdDel.DesiredAccess = 0x000F000C
 $hExisting = [IntPtr]::Zero
-if ([Win32AddPrinter]::OpenPrinter($PrinterName, [ref]$hExisting, [IntPtr]::Zero)) {
+if ([Win32AddPrinter]::OpenPrinter($PrinterName, [ref]$hExisting, [ref]$pdDel)) {
     Log "[INFO] Impressora '$PrinterName' ja existe, removendo para recriar..."
     [Win32AddPrinter]::DeletePrinter($hExisting) | Out-Null
     [Win32AddPrinter]::ClosePrinter($hExisting) | Out-Null

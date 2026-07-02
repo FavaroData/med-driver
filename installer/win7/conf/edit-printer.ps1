@@ -65,8 +65,10 @@ public class Win32EditPrinter {
         public uint   cJobs;
         public uint   AveragePPM;
     }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct PRINTER_DEFAULTS { public string pDatatype; public IntPtr pDevMode; public uint DesiredAccess; }
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
-    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, IntPtr pDefault);
+    public static extern bool OpenPrinter(string pPrinterName, out IntPtr phPrinter, ref PRINTER_DEFAULTS pDefault);
     [DllImport("winspool.drv", SetLastError=true)]
     public static extern bool ClosePrinter(IntPtr hPrinter);
     [DllImport("winspool.drv", SetLastError=true, CharSet=CharSet.Unicode)]
@@ -100,8 +102,11 @@ if ($OldPrinterName -ne $NewPrinterName) {
 # -- Troca porta se necessario via SetPrinterW ----------------------------
 if ($wmiPrinter.PortName -ne $PortName) {
     Log "[INFO] Alterando perfil para '$ProfileName'..."
+    # SetPrinter exige handle com PRINTER_ALL_ACCESS (0x000F000C)
+    $pd = New-Object Win32EditPrinter+PRINTER_DEFAULTS
+    $pd.DesiredAccess = 0x000F000C
     $hPrinter = [IntPtr]::Zero
-    if ([Win32EditPrinter]::OpenPrinter($NewPrinterName, [ref]$hPrinter, [IntPtr]::Zero)) {
+    if ([Win32EditPrinter]::OpenPrinter($NewPrinterName, [ref]$hPrinter, [ref]$pd)) {
         $pi2                 = New-Object Win32EditPrinter+PRINTER_INFO_2
         $pi2.pPrinterName    = $NewPrinterName
         $pi2.pPortName       = $PortName
