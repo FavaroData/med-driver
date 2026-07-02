@@ -117,7 +117,7 @@ Instale o Windows Vista SP2 e tente novamente."
     ; A instalação em si ocorre no Section (onde a tela de progresso já está visível).
     ; Aqui apenas detectamos e pedimos confirmação ao usuário, guardando o resultado em $R9.
     StrCpy $R9 "0"   ; flag: 0 = PS ok, 1 = precisa instalar KB968930
-    ReadRegStr $1 HKLM "SOFTWARE\Microsoft\PowerShell\1" "PowerShellVersion"
+    ReadRegStr $1 HKLM "SOFTWARE\Microsoft\PowerShell\1\PowerShellEngine" "PowerShellVersion"
     StrCpy $2 $1 1
 
     ${If} $2 == "1"

@@ -32,7 +32,7 @@ Os scripts `conf\*.ps1` do MedDriveManager requerem PS 2.0 (uso de `-ErrorAction
 
 O instalador lê:
 ```
-HKLM\SOFTWARE\Microsoft\PowerShell\1\PowerShellVersion
+HKLM\SOFTWARE\Microsoft\PowerShell\1\PowerShellEngine\PowerShellVersion
 ```
 - Ausente ou vazio → PS não instalado → aborta
 - Dígito principal == "1" (ex: "1.0") → PS 1.x → aborta
