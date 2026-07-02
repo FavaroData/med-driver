@@ -40,7 +40,7 @@ for f in main mainwnd store \
           dialogs/dlg_add dialogs/dlg_progress dialogs/dlg_profile dialogs/dlg_password \
           ui/theme ui/titlebar ui/navbar ui/listview ui/statusbar ui/buttons \
           settings/settings settings/settings_tab settings/import_config \
-          profiles/profiles_tab printers/printers_tab; do
+          profiles/profiles_tab printers/printers_tab printers/native/remove-printer; do
     $MINGW-gcc $DEFS $XPSEC $INC -c "$SRC/$f.c" -o "$TMP/$(basename $f).o"
 done
 $MINGW-windres --codepage 65001 -I"$RES" "$RES/app.rc" -o "$TMP/app_res.o"

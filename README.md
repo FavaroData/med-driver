@@ -1,4 +1,4 @@
-# Meddrive Printer v3.5
+# Meddrive Printer v4.0
 > Desenvolvido para a empresa **StachIt**.
 
 Impressora virtual PDF para Windows que captura jobs de impressão e os converte automaticamente em arquivos PDF, salvando-os em uma pasta configurável.

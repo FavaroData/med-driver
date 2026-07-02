@@ -1,5 +1,5 @@
 # Meddrive Printer — Documentação Técnica
-**v3.4 · Junho 2026**
+**v4.0 · Julho 2026**
 
 ---
 
@@ -116,7 +116,7 @@ Cada impressora cadastrada via MedDriveManager é associada a um **perfil**, que
 | `{hora}` | Hora atual (HH-MM-SS) |
 | `{documento}` | Nome do documento enviado para impressão |
 
-### 4.3 Estratégia de conflito
+### 4.3 Estratégia de conflito quando há arquivos com o mesmo nome
 
 Quando `OverwriteFile = 0` (incrementar):
 - O agente escaneia a pasta com `FindFirstFileW`/`FindNextFileW` (roda com credenciais do usuário, acessa pastas de rede)
@@ -480,3 +480,8 @@ Instalador, `meddrivemon.dll`, agente e Manager são distribuídos sem assinatur
 | Alto | Binários sem assinatura | Certificado de assinatura de código |
 | Médio | PowerShell/PrintManagement ausente | Documentar requisito |
 | Médio | Sessão do agente (RDP, multi-usuário) | Investigar caso a caso |
+
+
+As fragilidades serão corrigidas na nova versão v4.0 no qual torna obsoleto o uso dos scripts PowerShell, e adotará módulos desenvolvidos em C compilados junto do próprio `MedDriverPrinterManager.exe`.
+
+- **Isto corrige:** Permissões do Windows na execução dos scripts, problemas de engenharia reversa para alterar os perfis e impressoras configuradas (Mesmo bloqueadas no ´Manager`)

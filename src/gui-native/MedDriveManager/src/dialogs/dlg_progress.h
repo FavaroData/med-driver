@@ -7,8 +7,8 @@ BOOL dlg_progress_run(HWND parent,
                       const wchar_t *printerName,
                       const wchar_t *profileName);
 
-/* Exibe o dialog de progresso, lanca remove-printer.ps1 elevado via runas e
-   mostra a saida em tempo real. Retorna TRUE se o script saiu com codigo 0. */
+/* Remove a impressora via winspool nativo (sem PowerShell) e mostra o
+   progresso no dialogo. Retorna TRUE se a impressora foi removida. */
 BOOL dlg_progress_remove(HWND parent, const wchar_t *printerName);
 
 /* Exibe o dialog de progresso, lanca create-profile.ps1 e mostra a saida em

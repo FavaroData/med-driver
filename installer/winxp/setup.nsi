@@ -88,7 +88,6 @@ Function PgPaths
     StrCpy $R4 "$R4  $R3\conf\create-profile.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\edit-profile.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\edit-printer.ps1$\r$\n"
-    StrCpy $R4 "$R4  $R3\conf\remove-printer.ps1$\r$\n"
     StrCpy $R4 "$R4  $R3\conf\remove-profile.ps1$\r$\n"
     StrCpy $R4 "$R4$\r$\nAgente de sessao:$\r$\n"
     StrCpy $R4 "$R4  $R3\MeddrivePrinterAgent.exe$\r$\n"
@@ -160,7 +159,6 @@ Section "Instalar Meddrive Printer" SecInstall
     File "conf\create-profile.ps1"
     File "conf\edit-profile.ps1"
     File "conf\edit-printer.ps1"
-    File "conf\remove-printer.ps1"
     File "conf\remove-profile.ps1"
 
     ; Ghostscript XP x86 (nonfatal -- usuario fornece o binario separadamente)
@@ -179,7 +177,6 @@ Section "Instalar Meddrive Printer" SecInstall
     Delete "$INSTDIR\installer\conf\create-profile.ps1"
     Delete "$INSTDIR\installer\conf\edit-profile.ps1"
     Delete "$INSTDIR\installer\conf\edit-printer.ps1"
-    Delete "$INSTDIR\installer\conf\remove-printer.ps1"
     Delete "$INSTDIR\installer\conf\remove-profile.ps1"
     RMDir  "$INSTDIR\installer\conf"
     Delete "$INSTDIR\installer\pscript5\PSCRIPT5.DLL"

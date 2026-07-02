@@ -6,6 +6,7 @@
 #include "ui/theme.h"
 #include "ui/buttons.h"
 #include "settings/settings.h"   /* MEDDRIVE_DATA_DIR, MEDDRIVE_GS_EXE */
+#include "printers/native/remove-printer.h"   /* operacao nativa (sem PowerShell) */
 
 #define WM_APP_PS_OUTPUT  (WM_APP + 1)
 #define WM_APP_PS_DONE    (WM_APP + 2)
@@ -180,14 +181,17 @@ static DWORD WINAPI ps_thread_remove_profile(LPVOID param) {
 
 static DWORD WINAPI ps_thread_remove(LPVOID param) {
     ProgressParams *p = (ProgressParams *)param;
-    wchar_t cmd[4096];
-    _snwprintf_s(cmd, 4096, _TRUNCATE,
-        L"powershell.exe -ExecutionPolicy Bypass -NoProfile -File \"%s\""
-        L" -PrinterName \"%s\"",
-        p->scriptPath, p->printerName);
-    DWORD r = run_ps(p, cmd);
+    // feedback no dialogo antes da operacao
+    wchar_t *line = (wchar_t *)HeapAlloc(GetProcessHeap(), 0, 256 * sizeof(wchar_t));
+    if (line) {
+        _snwprintf_s(line, 256, _TRUNCATE, L"Removendo impressora '%s'...\r\n", p->printerName);
+        PostMessage(p->hwnd, WM_APP_PS_OUTPUT, 0, (LPARAM)line);
+    }
+    // operacao nativa (sem PowerShell) — funciona em Constrained Language Mode
+    BOOL ok = remove_printer(p->printerName);
+    PostMessage(p->hwnd, WM_APP_PS_DONE, ok ? 0 : 1, 0);
     HeapFree(GetProcessHeap(), 0, p);
-    return r;
+    return ok ? 0 : 1;
 }
 
 static DWORD WINAPI ps_thread_edit_printer(LPVOID param) {
@@ -394,22 +398,11 @@ BOOL dlg_progress_run(HWND parent,
 }
 
 BOOL dlg_progress_remove(HWND parent, const wchar_t *printerName) {
-    wchar_t scriptPath[MAX_PATH];
-    build_script_path(scriptPath, L"remove-printer.ps1");
-
-    if (GetFileAttributesW(scriptPath) == INVALID_FILE_ATTRIBUTES) {
-        MessageBoxW(parent,
-            L"Arquivo conf\\remove-printer.ps1 não encontrado.\r\n"
-            L"Certifique-se de que a pasta conf\\ está junto a MedDriveManager.exe.",
-            L"Erro", MB_ICONERROR | MB_OK);
-        return FALSE;
-    }
-
+    // chama o remove-printer.c
     ProgressParams *params = (ProgressParams *)HeapAlloc(
         GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ProgressParams));
     if (!params) return FALSE;
-    wcsncpy_s(params->scriptPath,  MAX_PATH, scriptPath,  _TRUNCATE);
-    wcsncpy_s(params->printerName, 256,      printerName, _TRUNCATE);
+    wcsncpy_s(params->printerName, 256, printerName, _TRUNCATE);
     params->mode = MODE_REMOVE;
 
     HINSTANCE hInst = (HINSTANCE)GetWindowLongPtrW(parent, GWLP_HINSTANCE);

@@ -127,7 +127,6 @@ Copy-Item (Join-Path $ScriptDir "conf\add-printer.ps1")    "$ConfDir\add-printer
 Copy-Item (Join-Path $ScriptDir "conf\create-profile.ps1") "$ConfDir\create-profile.ps1" -Force
 Copy-Item (Join-Path $ScriptDir "conf\edit-profile.ps1")   "$ConfDir\edit-profile.ps1"   -Force
 Copy-Item (Join-Path $ScriptDir "conf\edit-printer.ps1")   "$ConfDir\edit-printer.ps1"   -Force
-Copy-Item (Join-Path $ScriptDir "conf\remove-printer.ps1") "$ConfDir\remove-printer.ps1" -Force
 Copy-Item (Join-Path $ScriptDir "conf\remove-profile.ps1") "$ConfDir\remove-profile.ps1" -Force
 Copy-Item (Join-Path $ScriptDir "MEDDRIVE.PPD")            "$AppDir\MEDDRIVE.PPD"        -Force
 Copy-Item (Join-Path $ScriptDir "MedDriveManager.exe")         "$AppDir\MedDriveManager.exe"         -Force

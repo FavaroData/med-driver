@@ -338,7 +338,7 @@ int main(void)
 
     const wchar_t *confFiles[] = {
         L"add-printer.ps1",    L"create-profile.ps1", L"edit-profile.ps1",
-        L"edit-printer.ps1",   L"remove-printer.ps1", L"remove-profile.ps1", NULL
+        L"edit-printer.ps1",   L"remove-profile.ps1", NULL
     };
     for (int i = 0; confFiles[i]; i++) {
         wchar_t src[MAX_PATH], dst[MAX_PATH];
