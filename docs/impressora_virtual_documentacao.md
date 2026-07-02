@@ -426,3 +426,57 @@ Get-Content C:\Windows\Temp\meddrive_printer_manager.log
 
 Ver `docs/winvista-particularidades.md` para detalhes do suporte ao Vista.
 Ver `docs/winxp-particularidades.md` para detalhes do suporte ao XP.
+
+---
+
+## 13. Fragilidades e modos de falha (Windows 10/11)
+
+Levantamento dos cenários em que a aplicação pode não instalar ou não imprimir no Windows 10/11. Serve de mapa para decidir o que blindar e o que documentar como não suportado. O `setup.nsi` do Win10/11 hoje não verifica arquitetura, versão de SO nem PowerShell, e a instalação do driver é feita pelo `install.ps1` (PowerShell), que grava o driver PSCRIPT5 direto no registry.
+
+### 13.1 Bloqueadores de arquitetura
+
+| Cenário | O que quebra |
+|---|---|
+| Windows on ARM (ARM64) | O `spoolsv.exe` é nativo ARM64 e não carrega DLL x64. O `meddrivemon.dll` (x64) não é carregado pelo spooler, e o agente x64 não sobe. A emulação x64 é por-processo e não vale para o spooler. |
+| Windows 10 x86 (32-bit) | O instalador é `Target amd64` e a DLL é x64. Não instala nem carrega. |
+
+Nesses dois casos não é lentidão nem degradação: a impressão não funciona. Exigem uma build nativa da arquitetura (só o XP tem build x86 hoje).
+
+### 13.2 Hardening do Spooler (o risco mais atual)
+
+- **Windows Protected Print Mode (WPP), Win11 24H2+.** A Microsoft está tornando padrão o modo que remove o suporte a drivers de impressão v3 de terceiros (PSCRIPT5) e a print monitors customizados. Com o WPP ativo, o `meddrivemon.dll` e o driver PSCRIPT5 não são aceitos, e a arquitetura inteira para de funcionar. Precisa de teste numa máquina 24H2 atualizada para saber se já bloqueia hoje.
+- **Mitigações do PrintNightmare (2021+).** Políticas como `RestrictDriverInstallationToAdministrators` e as restrições de adição de monitor/porta podem bloquear o registro do monitor e do driver via registry. O instalador roda como administrador, o que ajuda, mas máquinas gerenciadas podem recusar um print monitor de terceiros.
+
+### 13.3 PowerShell e ambiente travado
+
+O Win10/11 depende de PowerShell em três frentes: `install.ps1` (instala o driver), `register-agent.ps1` (agenda o agente) e os seis scripts `conf` (criar/editar/remover impressora e perfil).
+
+- **Constrained Language Mode (WDAC/AppLocker).** Em ambiente corporativo travado, o PowerShell roda em CLM, que proíbe `Add-Type`. Os seis scripts `conf` usam `Add-Type` (P/Invoke em C#), então criar/editar/remover impressora falha. É o principal motivo para portar essas operações para C nativo.
+- **PowerShell ausente ou módulo PrintManagement faltando** (Server Core, Windows minimalista, ambientes só com PowerShell 7). O `install.ps1` usa `Get-PrinterDriver`/`Add-PrinterDriver` (PrintManagement, Win8+) e os scripts usam WMI clássico.
+
+### 13.4 Driver e arquivos
+
+- **PSCRIPT5 ausente em `x64\3\`.** O `install.ps1` grava o registry do driver apontando para `PSCRIPT5.DLL`, `PS5UI.DLL` e `PSCRIPT.NTF`, mas não copia esses arquivos. Ele assume que já estão em `System32\spool\drivers\x64\3\`. Numa instalação mínima que nunca teve impressora PostScript podem faltar, e o driver não carrega. Diferente do Win7, aqui isso nem é detectado. Mitigação barata: verificar e empacotar os arquivos, como no Win7 e no XP.
+
+### 13.5 Assinatura de código
+
+Instalador, `meddrivemon.dll`, agente e Manager são distribuídos sem assinatura. SmartScreen bloqueia o instalador, e antivírus/EDR corporativo pode colocar o monitor ou o agente em quarentena. Um print monitor sem assinatura carregado dentro do `spoolsv.exe` é exatamente o padrão que os EDRs vigiam. Resolver exige um certificado de assinatura de código.
+
+### 13.6 Runtime e sessão
+
+- **Sessão do agente.** O monitor usa `WTSGetActiveConsoleSessionId` e o pipe `MeddrivePrinter_<sessionId>`. Em RDP puro (sem sessão de console), fast-user-switching ou vários usuários simultâneos, a sessão pode não casar e o job não chega no agente.
+- **Elevação.** `RequestExecutionLevel admin`: sem direito de administrador (e sem credencial), a instalação não começa.
+- **Antivírus na conversão.** O agente faz `CreateProcessW` do `gswin64c.exe` a cada job. Alguns EDRs tratam o encadeamento "spooler, processo filho, grava arquivo" como suspeito.
+
+### 13.7 Resumo por severidade
+
+| Severidade | Item | Direção |
+|---|---|---|
+| Bloqueador | ARM64, x86 | Documentar como não suportado ou build nativa |
+| Bloqueador futuro | Windows Protected Print Mode (24H2+) | Testar; pode exigir outra arquitetura de driver |
+| Alto | PrintNightmare / máquina gerenciada | Testar; pode exigir política |
+| Alto | Constrained Language Mode | Portar operações para C (elimina `Add-Type`) |
+| Alto | PSCRIPT5 ausente em `x64\3\` | Verificar e empacotar os arquivos |
+| Alto | Binários sem assinatura | Certificado de assinatura de código |
+| Médio | PowerShell/PrintManagement ausente | Documentar requisito |
+| Médio | Sessão do agente (RDP, multi-usuário) | Investigar caso a caso |
