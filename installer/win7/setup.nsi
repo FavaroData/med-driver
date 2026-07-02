@@ -106,8 +106,6 @@ Section "Instalar Meddrive Printer" SecInstall
     File "install_helper.exe"
     File "..\win10-11\x64\Debug\MedDriveManager.exe"
     File "..\..\src\agent\MeddrivePrinterAgent.exe"
-    SetOutPath "$INSTDIR\installer\agent"
-    File "..\..\src\agent\register-agent.ps1"
     SetOutPath "$INSTDIR\installer\conf"
     File "conf\add-printer.ps1"
     File "conf\create-profile.ps1"
@@ -133,16 +131,16 @@ Section "Instalar Meddrive Printer" SecInstall
     nsExec::ExecToLog '"$INSTDIR\installer\install_helper.exe" "$INSTDIR\installer"'
     Pop $0
 
-    DetailPrint "Registrando agente no Task Scheduler..."
-    nsExec::ExecToLog 'powershell.exe -ExecutionPolicy Bypass -NonInteractive -File "$INSTDIR\installer\agent\register-agent.ps1"'
+    DetailPrint "Registrando agente no Task Scheduler (schtasks)..."
+    nsExec::ExecToLog 'schtasks /Create /TN "MeddrivePrinterAgent" /TR "\"$R0\Meddrive Printer\MeddrivePrinterAgent.exe\"" /SC ONLOGON /F'
     Pop $1
     ${If} $1 != 0
-        DetailPrint "AVISO: falha ao registrar MeddrivePrinterAgent (codigo $1)"
+        DetailPrint "AVISO: falha ao criar a tarefa MeddrivePrinterAgent (codigo $1)"
     ${EndIf}
+    ; inicia o agente agora, sem exigir logout/login
+    nsExec::ExecToLog 'schtasks /Run /TN "MeddrivePrinterAgent"'
 
     ; limpa temporários (arquivos já copiados para ProgramData pelo install_helper.exe)
-    Delete "$INSTDIR\installer\agent\register-agent.ps1"
-    RMDir  "$INSTDIR\installer\agent"
     Delete "$INSTDIR\installer\MeddrivePrinterAgent.exe"
     Delete "$INSTDIR\installer\install_helper.exe"
     Delete "$INSTDIR\installer\conf\add-printer.ps1"
